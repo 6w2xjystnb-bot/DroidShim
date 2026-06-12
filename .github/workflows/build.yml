@@ -28,27 +28,47 @@ jobs:
 
       - name: Build iOS Framework (Device)
         run: |
-          CORE_SCHEME="$(xcodebuild -list | awk '/Schemes:/{flag=1;next} flag && NF {print $1}' | grep -E '^(DroidShimCore|DroidShim-Package|DroidShim)$' | head -n 1)"
-          test -n "$CORE_SCHEME"
-          xcodebuild -scheme "$CORE_SCHEME" \
+          SCHEMES="$(xcodebuild -list)"
+          if echo "$SCHEMES" | grep -q '^[[:space:]]*DroidShimCore$'; then
+            IOS_SCHEME="DroidShimCore"
+          elif echo "$SCHEMES" | grep -q '^[[:space:]]*DroidShimApp$'; then
+            IOS_SCHEME="DroidShimApp"
+          else
+            IOS_SCHEME="DroidShim-Package"
+          fi
+          xcodebuild -scheme "$IOS_SCHEME" \
             -destination 'generic/platform=iOS' \
             -derivedDataPath ./build \
-            BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
             SKIP_INSTALL=NO
 
       - name: Build iOS Framework (Simulator)
         run: |
-          CORE_SCHEME="$(xcodebuild -list | awk '/Schemes:/{flag=1;next} flag && NF {print $1}' | grep -E '^(DroidShimCore|DroidShim-Package|DroidShim)$' | head -n 1)"
-          test -n "$CORE_SCHEME"
-          xcodebuild -scheme "$CORE_SCHEME" \
+          SCHEMES="$(xcodebuild -list)"
+          if echo "$SCHEMES" | grep -q '^[[:space:]]*DroidShimCore$'; then
+            IOS_SCHEME="DroidShimCore"
+          elif echo "$SCHEMES" | grep -q '^[[:space:]]*DroidShimApp$'; then
+            IOS_SCHEME="DroidShimApp"
+          else
+            IOS_SCHEME="DroidShim-Package"
+          fi
+          xcodebuild -scheme "$IOS_SCHEME" \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath ./build \
-            BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
 
       - name: Build iOS App
         run: |
-          APP_SCHEME="$(xcodebuild -list | awk '/Schemes:/{flag=1;next} flag && NF {print $1}' | grep -E '^(DroidShimApp|DroidShim-Package|DroidShim)$' | head -n 1)"
-          test -n "$APP_SCHEME"
+          SCHEMES="$(xcodebuild -list)"
+          if echo "$SCHEMES" | grep -q '^[[:space:]]*DroidShimApp$'; then
+            APP_SCHEME="DroidShimApp"
+          else
+            APP_SCHEME="DroidShim-Package"
+          fi
           xcodebuild -scheme "$APP_SCHEME" \
             -destination 'generic/platform=iOS' \
             -derivedDataPath ./build \
