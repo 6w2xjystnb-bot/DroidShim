@@ -9,6 +9,10 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /// One-time initialization for shim-internal state (TLS keys, fd table, etc.).
 void droidshim_initialize_shim(void);
 
@@ -16,5 +20,9 @@ void droidshim_initialize_shim(void);
 void droidshim_fd_register(int fd, const char* path);
 void droidshim_fd_unregister(int fd);
 const char* _Nullable droidshim_fd_path(int fd);
+
+#ifdef __cplusplus
+}
+#endif
 
 NS_ASSUME_NONNULL_END
