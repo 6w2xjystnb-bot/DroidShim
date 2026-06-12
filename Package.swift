@@ -11,7 +11,7 @@ let package = Package(
         .library(
             name: "DroidShimCore",
             type: .dynamic,
-            targets: ["DroidShimCore", "DroidShimNative"]
+            targets: ["DroidShimCore"]
         ),
         .executable(
             name: "DroidShimApp",
