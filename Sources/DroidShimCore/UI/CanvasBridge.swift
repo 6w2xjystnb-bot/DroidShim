@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import CoreGraphics
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -19,58 +18,69 @@ public enum PaintStyle {
 
 /// Android Paint surrogate.
 public final class PaintBridge {
-    #if canImport(UIKit)
-    public var color: UIColor? = .black
-    #else
-    public var color: CGColor? = CGColor(gray: 0, alpha: 1)
-    #endif
-    public var strokeWidth: CGFloat = 1.0
+    public var argb: UInt32 = 0xff000000
+    public var strokeWidth: Double = 1.0
     public var style: PaintStyle = .fill
-    public var textSize: CGFloat = 14.0
+    public var textSize: Double = 14.0
     public var isAntiAlias = true
 
     public init() {}
+
+    #if canImport(UIKit)
+    var color: UIColor {
+        let alpha = CGFloat((argb >> 24) & 0xff) / 255.0
+        let red = CGFloat((argb >> 16) & 0xff) / 255.0
+        let green = CGFloat((argb >> 8) & 0xff) / 255.0
+        let blue = CGFloat(argb & 0xff) / 255.0
+        return UIColor(red: red, green: green, blue: blue, alpha: alpha)
+    }
+    #endif
 }
 
 /// Android Bitmap surrogate.
 public final class BitmapBridge {
     #if canImport(UIKit)
-    public let image: UIImage?
-    public init(image: UIImage?) { self.image = image }
-    #else
-    public init() {}
+    let image: UIImage?
+    init(image: UIImage?) { self.image = image }
     #endif
+
+    public init() {}
 }
 
 /// Android Canvas surrogate.
 public final class CanvasBridge {
     #if canImport(UIKit)
-    public var context: CGContext?
+    var context: CGContext?
 
-    public init(context: CGContext?) {
+    init(context: CGContext?) {
         self.context = context
     }
 
-    public func drawRect(_ rect: CGRect, paint: PaintBridge) {
+    public init() {
+        self.context = nil
+    }
+
+    public func drawRect(x: Double, y: Double, width: Double, height: Double, paint: PaintBridge) {
         guard let ctx = context else { return }
-        ctx.setFillColor(paint.color?.cgColor ?? UIColor.black.cgColor)
+        let rect = CGRect(x: CGFloat(x), y: CGFloat(y), width: CGFloat(width), height: CGFloat(height))
+        ctx.setFillColor(paint.color.cgColor)
         ctx.fill(rect)
     }
 
-    public func drawText(_ text: String, x: CGFloat, y: CGFloat, paint: PaintBridge) {
-        guard let ctx = context, let color = paint.color else { return }
+    public func drawText(_ text: String, x: Double, y: Double, paint: PaintBridge) {
+        guard let ctx = context else { return }
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: paint.textSize),
-            .foregroundColor: color
+            .font: UIFont.systemFont(ofSize: CGFloat(paint.textSize)),
+            .foregroundColor: paint.color
         ]
-        (text as NSString).draw(at: CGPoint(x: x, y: y), withAttributes: attrs)
+        (text as NSString).draw(at: CGPoint(x: CGFloat(x), y: CGFloat(y)), withAttributes: attrs)
         // Restore context state after text drawing.
         ctx.beginPath()
     }
 
-    public func drawBitmap(_ bitmap: BitmapBridge, left: CGFloat, top: CGFloat, paint: PaintBridge?) {
+    public func drawBitmap(_ bitmap: BitmapBridge, left: Double, top: Double, paint: PaintBridge?) {
         guard let image = bitmap.image else { return }
-        image.draw(at: CGPoint(x: left, y: top))
+        image.draw(at: CGPoint(x: CGFloat(left), y: CGFloat(top)))
         _ = paint
     }
     #else
