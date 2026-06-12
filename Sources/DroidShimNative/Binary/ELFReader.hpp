@@ -182,6 +182,8 @@ private:
     uint64_t relaPltOffset_ = 0;
     uint64_t relaPltSize_ = 0;
 
+    std::vector<Elf64_Rela> relaDyn_;
+    std::vector<Elf64_Rela> relaPlt_;
     std::vector<std::string> needed_;
     mutable std::unordered_map<std::string, const Elf64_Sym*> symbolMap_;
 };
