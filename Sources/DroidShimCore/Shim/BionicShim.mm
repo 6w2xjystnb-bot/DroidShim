@@ -35,6 +35,14 @@
 
 #define SHIM_EXPORT __attribute__((visibility("default")))
 
+#ifndef O_LARGEFILE
+#define O_LARGEFILE 0
+#endif
+
+#if defined(__APPLE__) && !defined(__off64_t_defined)
+using off64_t = off_t;
+#endif
+
 extern "C" {
 
 SHIM_EXPORT void droidshim_initialize_shim(void) {

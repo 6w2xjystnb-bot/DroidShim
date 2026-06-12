@@ -188,9 +188,9 @@ rm -rf Payload
 
 ## Security Note
 
-The bundled `.github/workflows/build.yml` contains a hard-coded GitHub token
-for the repository. Replace it with `${{ secrets.GITHUB_TOKEN }}` or a
-repository secret before using CI in production.
+The bundled `.github/workflows/build.yml` uses the short-lived
+`${{ secrets.GITHUB_TOKEN }}` provided by GitHub Actions. Do not commit personal
+access tokens or embed them in Git remotes.
 
 ---
 

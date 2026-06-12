@@ -6,9 +6,9 @@
 //
 
 import Foundation
+import CoreGraphics
 #if canImport(UIKit)
 import UIKit
-import CoreGraphics
 #endif
 
 /// Android Paint style equivalent.
@@ -19,7 +19,11 @@ public enum PaintStyle {
 
 /// Android Paint surrogate.
 public final class PaintBridge {
+    #if canImport(UIKit)
     public var color: UIColor? = .black
+    #else
+    public var color: CGColor? = CGColor(gray: 0, alpha: 1)
+    #endif
     public var strokeWidth: CGFloat = 1.0
     public var style: PaintStyle = .fill
     public var textSize: CGFloat = 14.0

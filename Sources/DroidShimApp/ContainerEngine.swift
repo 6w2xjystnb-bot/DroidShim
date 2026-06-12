@@ -145,6 +145,12 @@ public final class ContainerEngine: ObservableObject {
                     _ = try? registry.loadLibrary(path: libPath)
                 }
 
+                // Load main activity class from manifest.
+                let mainActivity = container.mainActivity
+                guard !mainActivity.isEmpty else {
+                    throw ContainerEngineError.launchFailed("No MAIN/LAUNCHER activity in manifest")
+                }
+
                 let mapper = ViewMapper(resolver: resolver,
                                         jniRegistry: registry,
                                         libraryPath: libPath,
@@ -163,11 +169,6 @@ public final class ContainerEngine: ObservableObject {
                     }
                 }
 
-                // Load main activity class from manifest.
-                let mainActivity = container.mainActivity
-                guard !mainActivity.isEmpty else {
-                    throw ContainerEngineError.launchFailed("No MAIN/LAUNCHER activity in manifest")
-                }
                 let activity = ActivityBridge(
                     className: mainActivity,
                     interpreter: interpreter,

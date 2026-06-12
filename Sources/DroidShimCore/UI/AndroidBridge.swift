@@ -75,14 +75,6 @@ public final class ActivityBridge: NSObject {
         _ = try? invokeLifecycleMethod("onDestroy", args: [])
     }
 
-    public func setContentView(layoutResID: Int) {
-        // Phase 1: binary XML layouts are not decoded to UIKit.
-        // Try to find a cached text layout by resource name.
-        if let name = resourceResolver.idForRField(innerClass: "layout", field: String(layoutResID)) {
-            setContentView(layoutName: String(name))
-        }
-    }
-
     public func setContentView(layoutName: String) {
         guard let xml = resourceResolver.resolveLayout(named: layoutName) else { return }
         let root = LayoutInflater(mapper: viewMapper).inflate(xml: xml)
