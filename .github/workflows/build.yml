@@ -23,9 +23,14 @@ jobs:
       - name: Run Unit Tests
         run: swift test
 
+      - name: List Xcode Schemes
+        run: xcodebuild -list
+
       - name: Build iOS Framework (Device)
         run: |
-          xcodebuild -scheme DroidShimCore \
+          CORE_SCHEME="$(xcodebuild -list | awk '/Schemes:/{flag=1;next} flag && NF {print $1}' | grep -E '^(DroidShimCore|DroidShim-Package|DroidShim)$' | head -n 1)"
+          test -n "$CORE_SCHEME"
+          xcodebuild -scheme "$CORE_SCHEME" \
             -destination 'generic/platform=iOS' \
             -derivedDataPath ./build \
             BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
@@ -33,14 +38,18 @@ jobs:
 
       - name: Build iOS Framework (Simulator)
         run: |
-          xcodebuild -scheme DroidShimCore \
+          CORE_SCHEME="$(xcodebuild -list | awk '/Schemes:/{flag=1;next} flag && NF {print $1}' | grep -E '^(DroidShimCore|DroidShim-Package|DroidShim)$' | head -n 1)"
+          test -n "$CORE_SCHEME"
+          xcodebuild -scheme "$CORE_SCHEME" \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath ./build \
             BUILD_LIBRARY_FOR_DISTRIBUTION=YES
 
       - name: Build iOS App
         run: |
-          xcodebuild -scheme DroidShimApp \
+          APP_SCHEME="$(xcodebuild -list | awk '/Schemes:/{flag=1;next} flag && NF {print $1}' | grep -E '^(DroidShimApp|DroidShim-Package|DroidShim)$' | head -n 1)"
+          test -n "$APP_SCHEME"
+          xcodebuild -scheme "$APP_SCHEME" \
             -destination 'generic/platform=iOS' \
             -derivedDataPath ./build \
             CODE_SIGN_IDENTITY="" \
