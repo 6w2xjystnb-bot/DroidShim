@@ -5,6 +5,7 @@
 //  Orchestrates APK install, .so conversion, and Activity launch.
 //
 
+#if canImport(UIKit)
 import SwiftUI
 import UIKit
 import DroidShimCore
@@ -212,3 +213,4 @@ public final class ContainerEngine: ObservableObject {
         return logURL
     }
 }
+#endif

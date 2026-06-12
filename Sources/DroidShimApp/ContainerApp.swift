@@ -6,6 +6,8 @@
 //
 
 import SwiftUI
+
+#if canImport(UIKit)
 import UIKit
 import DroidShimCore
 
@@ -28,3 +30,13 @@ struct DroidShimApp: App {
         }
     }
 }
+#else
+@main
+struct DroidShimApp: App {
+    var body: some Scene {
+        WindowGroup {
+            Text("DroidShim requires iOS.")
+        }
+    }
+}
+#endif

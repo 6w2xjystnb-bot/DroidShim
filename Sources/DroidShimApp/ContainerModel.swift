@@ -5,6 +5,7 @@
 //  Observable model for a single imported APK container.
 //
 
+#if canImport(UIKit)
 import SwiftUI
 import UIKit
 import DroidShimCore
@@ -69,3 +70,4 @@ public final class ContainerModel: ObservableObject, Identifiable, Codable {
         try c.encode(state, forKey: .state)
     }
 }
+#endif

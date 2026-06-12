@@ -5,6 +5,7 @@
 //  File importer for .apk archives.
 //
 
+#if canImport(UIKit)
 import SwiftUI
 import UniformTypeIdentifiers
 import DroidShimCore
@@ -78,3 +79,4 @@ struct ImportSheet: View {
         }
     }
 }
+#endif

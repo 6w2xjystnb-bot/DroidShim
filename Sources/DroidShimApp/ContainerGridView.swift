@@ -5,6 +5,7 @@
 //  Grid of imported APK containers.
 //
 
+#if canImport(UIKit)
 import SwiftUI
 import DroidShimCore
 
@@ -93,3 +94,4 @@ struct ContainerCell: View {
         }
     }
 }
+#endif
