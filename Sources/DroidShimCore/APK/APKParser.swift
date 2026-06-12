@@ -262,7 +262,7 @@ private final class ZipArchive {
                       let sourcePtr = source.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
                     return 0
                 }
-                compression_decode_buffer(
+                return compression_decode_buffer(
                     destPtr,
                     uncompressedSize,
                     sourcePtr,
