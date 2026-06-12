@@ -1,0 +1,66 @@
+// swift-tools-version:5.9
+import PackageDescription
+
+let package = Package(
+    name: "DroidShim",
+    platforms: [
+        .iOS(.v16),
+        .macOS(.v13)
+    ],
+    products: [
+        .library(
+            name: "DroidShimCore",
+            type: .dynamic,
+            targets: ["DroidShimCore"]
+        ),
+        .executable(
+            name: "DroidShimApp",
+            targets: ["DroidShimApp"]
+        )
+    ],
+    targets: [
+        .target(
+            name: "DroidShimCore",
+            dependencies: [],
+            path: "Sources/DroidShimCore",
+            exclude: [],
+            publicHeadersPath: "include",
+            cxxSettings: [
+                .headerSearchPath("Shim/include"),
+                .define("__APPLE__"),
+                .define("_GNU_SOURCE")
+            ],
+            swiftSettings: [
+                .interoperabilityMode(.Cxx)
+            ],
+            linkerSettings: [
+                .linkedLibrary("c++"),
+                .linkedFramework("Foundation"),
+                .linkedFramework("UIKit", .when(platforms: [.iOS])),
+                .linkedFramework("Metal", .when(platforms: [.iOS])),
+                .linkedFramework("CoreGraphics", .when(platforms: [.iOS]))
+            ]
+        ),
+        .executableTarget(
+            name: "DroidShimApp",
+            dependencies: ["DroidShimCore"],
+            path: "Sources/DroidShimApp",
+            swiftSettings: [
+                .interoperabilityMode(.Cxx)
+            ],
+            linkerSettings: [
+                .linkedFramework("SwiftUI"),
+                .linkedFramework("UIKit")
+            ]
+        ),
+        .testTarget(
+            name: "DroidShimTests",
+            dependencies: ["DroidShimCore"],
+            path: "Tests",
+            swiftSettings: [
+                .interoperabilityMode(.Cxx)
+            ]
+        )
+    ],
+    cxxLanguageStandard: .cxx17
+)

@@ -1,0 +1,73 @@
+name: DroidShim CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-core:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: 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
+
+      - name: Select Xcode 15.2
+        run: sudo xcode-select -s /Applications/Xcode_15.2.app
+
+      - name: Build SPM Core
+        run: swift build -Xswiftc -target -Xswiftc arm64-apple-ios16.0
+
+      - name: Run Unit Tests
+        run: swift test
+
+      - name: Build iOS Framework (Device)
+        run: |
+          xcodebuild -scheme DroidShimCore \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath ./build \
+            BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
+            SKIP_INSTALL=NO
+
+      - name: Build iOS Framework (Simulator)
+        run: |
+          xcodebuild -scheme DroidShimCore \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ./build \
+            BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+
+      - name: Build iOS App
+        run: |
+          xcodebuild -scheme DroidShimApp \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath ./build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Package IPA (unsigned)
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Debug-iphoneos/DroidShimApp.app Payload/
+          zip -r DroidShim.ipa Payload
+          rm -rf Payload
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DroidShim-build
+          path: |
+            build/Build/Products/**/*.framework
+            DroidShim.ipa
+
+      - name: Tag Release
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git tag "v0.1.0-$(date +%s)"
+          git push origin --tags
+        env:
+          GITHUB_TOKEN: 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
