@@ -11,6 +11,7 @@
 
 @interface DSBinaryBridge () {
     droidshim::ELFReader _reader;
+    BOOL _hasParsedELF;
 }
 @end
 
@@ -20,6 +21,7 @@
     if (!data || data.length == 0) { return -1; }
     const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data.bytes);
     bool ok = _reader.parse(bytes, data.length);
+    _hasParsedELF = ok ? YES : NO;
     if (!ok) { return -1; }
     return static_cast<NSInteger>(_reader.externalSymbols().size());
 }
@@ -36,6 +38,13 @@
 - (BOOL)writeMachOToPath:(NSString *)outputPath
             installName:(NSString *)installName
                   error:(NSString * _Nullable * _Nullable)error {
+    if (!_hasParsedELF) {
+        if (error) {
+            *error = @"No valid ELF has been parsed";
+        }
+        return NO;
+    }
+
     std::string out = [outputPath UTF8String];
     std::string name = installName ? [installName UTF8String] : "com.droidshim.generated";
 
