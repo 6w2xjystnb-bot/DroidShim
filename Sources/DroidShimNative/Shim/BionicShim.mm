@@ -96,14 +96,14 @@ SHIM_EXPORT char* strncpy(char* dst, const char* src, size_t n) { return ::strnc
 SHIM_EXPORT int strcmp(const char* a, const char* b) { return ::strcmp(a, b); }
 SHIM_EXPORT int strncmp(const char* a, const char* b, size_t n) { return ::strncmp(a, b, n); }
 SHIM_EXPORT char* strcat(char* dst, const char* src) { return ::strcat(dst, src); }
-SHIM_EXPORT char* strchr(const char* s, int c) { return ::strchr(s, c); }
-SHIM_EXPORT char* strrchr(const char* s, int c) { return ::strrchr(s, c); }
+SHIM_EXPORT char* strchr(const char* s, int c) { return const_cast<char*>(::strchr(s, c)); }
+SHIM_EXPORT char* strrchr(const char* s, int c) { return const_cast<char*>(::strrchr(s, c)); }
 SHIM_EXPORT char* strdup(const char* s) { return ::strdup(s); }
 SHIM_EXPORT char* strndup(const char* s, size_t n) { return ::strndup(s, n); }
 SHIM_EXPORT void* memset(void* s, int c, size_t n) { return ::memset(s, c, n); }
 SHIM_EXPORT void* memcpy(void* dst, const void* src, size_t n) { return ::memcpy(dst, src, n); }
 SHIM_EXPORT void* memmove(void* dst, const void* src, size_t n) { return ::memmove(dst, src, n); }
-SHIM_EXPORT void* memchr(const void* s, int c, size_t n) { return ::memchr(s, c, n); }
+SHIM_EXPORT void* memchr(const void* s, int c, size_t n) { return const_cast<void*>(::memchr(s, c, n)); }
 SHIM_EXPORT int memcmp(const void* a, const void* b, size_t n) { return ::memcmp(a, b, n); }
 
 // MARK: - Stdio
@@ -399,7 +399,7 @@ SHIM_EXPORT int ashmem_unpin(int fd) { (void)fd; return 0; }
 SHIM_EXPORT void* dlopen(const char* path, int flags) { return ::dlopen(path, flags); }
 SHIM_EXPORT int dlclose(void* handle) { return ::dlclose(handle); }
 SHIM_EXPORT void* dlsym(void* handle, const char* symbol) { return ::dlsym(handle, symbol); }
-SHIM_EXPORT const char* dlerror(void) { return ::dlerror(); }
+SHIM_EXPORT char* dlerror(void) { return ::dlerror(); }
 SHIM_EXPORT int dladdr(const void* addr, Dl_info* info) { return ::dladdr(addr, info); }
 
 // MARK: - logging
