@@ -18,8 +18,8 @@ namespace droidshim {
 
 // Mach-O constants.
 constexpr uint32_t MH_MAGIC_64     = 0xfeedfacf;
-constexpr uint32_t CPU_TYPE_ARM64  = 0x0100000c;
-constexpr uint32_t CPU_SUBTYPE_ARM64_ALL = 0x00000000;
+constexpr uint32_t DS_CPU_TYPE_ARM64  = 0x0100000c;
+constexpr uint32_t DS_CPU_SUBTYPE_ARM64_ALL = 0x00000000;
 constexpr uint32_t MH_DYLIB        = 6;
 
 constexpr uint32_t LC_SEGMENT_64   = 0x19;

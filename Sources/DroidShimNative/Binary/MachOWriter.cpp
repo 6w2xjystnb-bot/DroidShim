@@ -415,8 +415,8 @@ MachOWriteResult MachOWriter::generate(const ELFReader& elf,
     // Write header.
     mach_header_64 hdr{};
     hdr.magic = MH_MAGIC_64;
-    hdr.cputype = CPU_TYPE_ARM64;
-    hdr.cpusubtype = CPU_SUBTYPE_ARM64_ALL;
+    hdr.cputype = DS_CPU_TYPE_ARM64;
+    hdr.cpusubtype = DS_CPU_SUBTYPE_ARM64_ALL;
     hdr.filetype = MH_DYLIB;
     hdr.ncmds = ncmds;
     hdr.sizeofcmds = sizeofcmds;
