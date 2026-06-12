@@ -5,6 +5,7 @@
 
 import XCTest
 import DroidShimCore
+import DroidShimNative
 
 final class MachOWriterTests: XCTestCase {
 

@@ -59,7 +59,7 @@ let package = Package(
         ),
         .testTarget(
             name: "DroidShimTests",
-            dependencies: ["DroidShimCore"],
+            dependencies: ["DroidShimCore", "DroidShimNative"],
             path: "Tests",
             swiftSettings: [
                 .interoperabilityMode(.Cxx)
