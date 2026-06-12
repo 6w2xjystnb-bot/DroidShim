@@ -44,7 +44,11 @@ public final class BitmapBridge {
     init(image: UIImage?) { self.image = image }
     #endif
 
-    public init() {}
+    public init() {
+        #if canImport(UIKit)
+        self.image = nil
+        #endif
+    }
 }
 
 /// Android Canvas surrogate.
