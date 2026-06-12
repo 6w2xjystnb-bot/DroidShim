@@ -11,7 +11,7 @@ let package = Package(
         .library(
             name: "DroidShimCore",
             type: .dynamic,
-            targets: ["DroidShimCore"]
+            targets: ["DroidShimCore", "DroidShimNative"]
         ),
         .executable(
             name: "DroidShimApp",
@@ -21,17 +21,21 @@ let package = Package(
     targets: [
         .target(
             name: "DroidShimCore",
-            dependencies: [],
+            dependencies: ["DroidShimNative"],
             path: "Sources/DroidShimCore",
-            exclude: [],
-            publicHeadersPath: "include",
-            cxxSettings: [
-                .headerSearchPath("Shim/include"),
-                .define("__APPLE__"),
-                .define("_GNU_SOURCE")
-            ],
             swiftSettings: [
                 .interoperabilityMode(.Cxx)
+            ]
+        ),
+        .target(
+            name: "DroidShimNative",
+            dependencies: [],
+            path: "Sources/DroidShimNative",
+            publicHeadersPath: "include",
+            cxxSettings: [
+                .headerSearchPath("Binary"),
+                .define("__APPLE__"),
+                .define("_GNU_SOURCE")
             ],
             linkerSettings: [
                 .linkedLibrary("c++"),
