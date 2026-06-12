@@ -98,9 +98,13 @@ public final class BinaryXMLParser {
 
         var offset = headerSize
         while offset < chunkSize {
+            guard offset + 8 <= data.count else { throw BinaryXMLParserError.truncated }
             let childType = readUInt16(at: offset)
             let childHeaderSize = Int(readUInt16(at: offset + 2))
             let childChunkSize = Int(readUInt32(at: offset + 4))
+            guard childChunkSize > 0, offset + childChunkSize <= data.count else {
+                throw BinaryXMLParserError.truncated
+            }
 
             guard let kind = AXMLChunkType(rawValue: childType) else {
                 offset += childChunkSize
@@ -161,6 +165,7 @@ public final class BinaryXMLParser {
             // UTF-8: ULEB128 character length (ignored), then ULEB128 byte length, then bytes.
             let (_, p1) = readULEB128(at: pos); pos = p1
             let (byteLen, p2) = readULEB128(at: pos); pos = p2
+            guard pos + Int(byteLen) <= data.count else { throw BinaryXMLParserError.truncated }
             let bytes = data.subdata(in: pos..<pos + Int(byteLen))
             guard let s = String(data: bytes, encoding: .utf8) else {
                 throw BinaryXMLParserError.invalidStringIndex(0)
@@ -170,6 +175,7 @@ public final class BinaryXMLParser {
             // UTF-16: ULEB128 char length * 2 bytes, null-terminated.
             let (charLen, p1) = readULEB128(at: pos); pos = p1
             let byteLen = Int(charLen) * 2
+            guard pos + byteLen <= data.count else { throw BinaryXMLParserError.truncated }
             let bytes = data.subdata(in: pos..<pos + byteLen)
             guard let s = String(data: bytes, encoding: .utf16LittleEndian) else {
                 throw BinaryXMLParserError.invalidStringIndex(0)
@@ -204,6 +210,7 @@ public final class BinaryXMLParser {
         var attrs: [AXMLAttribute] = []
         var attrOffset = offset + attrStart
         for _ in 0..<attrCount {
+            guard attrOffset + 20 <= data.count else { throw BinaryXMLParserError.truncated }
             let ns = readUInt32(at: attrOffset)
             let name = readUInt32(at: attrOffset + 4)
             let rawValue = readUInt32(at: attrOffset + 8)
@@ -313,28 +320,23 @@ public final class BinaryXMLParser {
     // MARK: - Low-level readers
 
     private func readUInt16(at offset: Int) -> UInt16 {
-        var value: UInt16 = 0
-        data.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt16.self) else { return }
-            value = base[offset / 2]
-        }
-        return value
+        guard offset >= 0, offset + 2 <= data.count else { return 0 }
+        return UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
     }
 
     private func readUInt32(at offset: Int) -> UInt32 {
-        var value: UInt32 = 0
-        data.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt32.self) else { return }
-            value = base[offset / 4]
-        }
-        return value
+        guard offset >= 0, offset + 4 <= data.count else { return 0 }
+        return UInt32(data[offset])
+            | (UInt32(data[offset + 1]) << 8)
+            | (UInt32(data[offset + 2]) << 16)
+            | (UInt32(data[offset + 3]) << 24)
     }
 
     private func readULEB128(at offset: Int) -> (value: UInt32, next: Int) {
         var result: UInt32 = 0
         var shift: UInt32 = 0
         var i = offset
-        while true {
+        while i < data.count {
             let byte = data[i]
             i += 1
             result |= UInt32(byte & 0x7f) << shift
