@@ -54,6 +54,10 @@ jobs:
           else
             IOS_SCHEME="DroidShim-Package"
           fi
+          if ! xcodebuild -showdestinations -scheme "$IOS_SCHEME" | grep -q '{ platform:iOS Simulator'; then
+            echo "No iOS Simulator destination is installed for $IOS_SCHEME; skipping simulator build."
+            exit 0
+          fi
           xcodebuild -scheme "$IOS_SCHEME" \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath ./build \
