@@ -54,7 +54,7 @@ let package = Package(
             ],
             linkerSettings: [
                 .linkedFramework("SwiftUI"),
-                .linkedFramework("UIKit")
+                .linkedFramework("UIKit", .when(platforms: [.iOS]))
             ]
         ),
         .testTarget(
