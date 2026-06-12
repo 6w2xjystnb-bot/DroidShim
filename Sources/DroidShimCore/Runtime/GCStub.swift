@@ -12,7 +12,7 @@ import Foundation
 public final class JavaObject {
     public let className: String
     public var fields: [String: Any] = [:]
-    public var arrayValues: [Any] = []
+    public var arrayValues: [JavaValue] = []
     public var isArray = false
     public var markBit = false
 

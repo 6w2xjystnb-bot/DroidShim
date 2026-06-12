@@ -555,7 +555,7 @@ public final class ARTInterpreter {
                                        receiverReg: Int,
                                        argValues: [JavaValue],
                                        current: Frame) -> FrameworkResult {
-        guard let bridge = uiBridge else { return nil }
+        guard let bridge = uiBridge else { return .notIntercepted }
         let name = methodRef.name
         let desc = methodRef.classType.descriptor
 

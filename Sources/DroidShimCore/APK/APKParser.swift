@@ -258,10 +258,14 @@ private final class ZipArchive {
         var output = Data(count: uncompressedSize)
         let result = data.withUnsafeBytes { source in
             output.withUnsafeMutableBytes { dest in
+                guard let destPtr = dest.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                      let sourcePtr = source.baseAddress?.assumingMemoryBound(to: UInt8.self) else {
+                    return 0
+                }
                 compression_decode_buffer(
-                    dest.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                    destPtr,
                     uncompressedSize,
-                    source.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                    sourcePtr,
                     source.count,
                     nil,
                     COMPRESSION_ZLIB

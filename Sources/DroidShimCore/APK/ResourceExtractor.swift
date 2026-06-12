@@ -117,8 +117,9 @@ public final class ResourceTable {
         let size = readUInt16(at: offset)
         let flags = readUInt16(at: offset + 2)
         let keyIndex = readUInt32(at: offset + 4)
-        let keyName = keyIndex < keyStrings.count ? keyStrings[Int(keyIndex)] : ""
-        (void)size; (void)flags;
+        let keyName = keyIndex < UInt32(keyStrings.count) ? keyStrings[Int(keyIndex)] : ""
+        _ = size
+        _ = flags
 
         let valueDataType = data[offset + 11]
         let valueData = readUInt32(at: offset + 12)

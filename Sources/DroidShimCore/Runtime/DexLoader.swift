@@ -458,6 +458,7 @@ public final class DexFile {
         let header = data[offset]
         let valueType = header & 0x1f
         let valueArg = (header >> 5) & 0x7
+        let valueSize = Int(valueArg) + 1
         var pos = offset + 1
 
         func nextBytes(_ count: Int) -> [UInt8] {
@@ -478,11 +479,11 @@ public final class DexFile {
 
         switch valueType {
         case 0x02: // SHORT
-            return (.int(Int32(truncatingIfNeeded: signedN(valueArg + 1))), pos)
+            return (.int(Int32(truncatingIfNeeded: signedN(valueSize))), pos)
         case 0x04: // INT
-            return (.int(Int32(truncatingIfNeeded: signedN(valueArg + 1))), pos)
+            return (.int(Int32(truncatingIfNeeded: signedN(valueSize))), pos)
         case 0x06: // LONG
-            return (.long(signedN(valueArg + 1)), pos)
+            return (.long(signedN(valueSize)), pos)
         case 0x1e: // NULL
             return (.null, pos)
         default:
@@ -491,9 +492,9 @@ public final class DexFile {
             let skip: Int
             switch valueType {
             case 0x00: skip = 1 // BYTE
-            case 0x03: skip = valueArg + 1 // CHAR
-            case 0x10: skip = valueArg + 1 // FLOAT
-            case 0x11: skip = valueArg + 1 // DOUBLE
+            case 0x03: skip = valueSize // CHAR
+            case 0x10: skip = valueSize // FLOAT
+            case 0x11: skip = valueSize // DOUBLE
             case 0x17, 0x18, 0x19, 0x1a, 0x1b: // STRING/TYPE/FIELD/METHOD/ENUM
                 let (_, p) = readULEB128(at: pos)
                 pos = p
