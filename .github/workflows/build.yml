@@ -54,7 +54,9 @@ jobs:
           else
             IOS_SCHEME="DroidShim-Package"
           fi
-          if ! xcodebuild -showdestinations -scheme "$IOS_SCHEME" | grep -q '{ platform:iOS Simulator'; then
+          DESTINATIONS="$(xcodebuild -showdestinations -scheme "$IOS_SCHEME")"
+          AVAILABLE_DESTINATIONS="$(printf '%s\n' "$DESTINATIONS" | awk '/Ineligible destinations/{exit} {print}')"
+          if ! printf '%s\n' "$AVAILABLE_DESTINATIONS" | grep -q '{ platform:iOS Simulator'; then
             echo "No iOS Simulator destination is installed for $IOS_SCHEME; skipping simulator build."
             exit 0
           fi
@@ -73,7 +75,9 @@ jobs:
           else
             APP_SCHEME="DroidShim-Package"
           fi
-          if ! xcodebuild -showdestinations -scheme "$APP_SCHEME" | grep -q '{ platform:iOS,'; then
+          DESTINATIONS="$(xcodebuild -showdestinations -scheme "$APP_SCHEME")"
+          AVAILABLE_DESTINATIONS="$(printf '%s\n' "$DESTINATIONS" | awk '/Ineligible destinations/{exit} {print}')"
+          if ! printf '%s\n' "$AVAILABLE_DESTINATIONS" | grep -q '{ platform:iOS,'; then
             echo "$APP_SCHEME has no installable iOS app destination in this SwiftPM package; skipping app build."
             exit 0
           fi
@@ -99,6 +103,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: DroidShim-build
+          if-no-files-found: warn
           path: |
             build/Build/Products/**/*.framework
             build/Build/Products/**/*.dylib
