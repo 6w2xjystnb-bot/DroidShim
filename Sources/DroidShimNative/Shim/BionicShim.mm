@@ -25,6 +25,7 @@
 #include <errno.h>
 
 #if defined(__APPLE__)
+#include <TargetConditionals.h>
 #include <sys/event.h>
 #include <sys/shm.h>
 #include <mach/mach.h>
@@ -48,6 +49,8 @@ extern "C" {
 SHIM_EXPORT void droidshim_initialize_shim(void) {
     // No-op for Phase 1; state is initialized lazily.
 }
+
+#if TARGET_OS_IPHONE
 
 // MARK: - Memory
 
@@ -434,5 +437,7 @@ SHIM_EXPORT void abort(void) {
     // Directly trap to avoid recursion through the exported abort symbol.
     __builtin_trap();
 }
+
+#endif // TARGET_OS_IPHONE
 
 } // extern "C"
