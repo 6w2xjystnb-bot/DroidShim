@@ -10,6 +10,7 @@ import SwiftUI
 #if canImport(UIKit)
 import UIKit
 import DroidShimCore
+import DroidShimNative
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,

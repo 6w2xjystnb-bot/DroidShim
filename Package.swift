@@ -47,7 +47,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "DroidShimApp",
-            dependencies: ["DroidShimCore"],
+            dependencies: ["DroidShimCore", "DroidShimNative"],
             path: "Sources/DroidShimApp",
             swiftSettings: [
                 .interoperabilityMode(.Cxx)
