@@ -32,6 +32,9 @@ public enum ContainerEngineError: Error, CustomStringConvertible {
 public enum ContainerEngineActivity: Equatable {
     case idle
     case importing(String)
+    case parsing(String)
+    case extracting(String)
+    case converting(String)
     case launching(String)
     case failed(String)
 
@@ -39,6 +42,9 @@ public enum ContainerEngineActivity: Equatable {
         switch self {
         case .idle: return nil
         case .importing(let name): return "Importing \(name)..."
+        case .parsing(let name): return "Reading \(name)..."
+        case .extracting(let name): return "Extracting \(name)..."
+        case .converting(let name): return "Preparing native code for \(name)..."
         case .launching(let name): return "Launching \(name)..."
         case .failed(let message): return message
         }
@@ -51,7 +57,6 @@ public final class ContainerEngine: ObservableObject {
     @Published public var containers: [ContainerModel] = []
     @Published public var activity: ContainerEngineActivity = .idle
 
-    private let parser = APKParser()
     private let registryKey = "droidshim.containers"
 
     public init() {
@@ -100,6 +105,7 @@ public final class ContainerEngine: ObservableObject {
     }
 
     public func installImportedAPK(from url: URL) async throws -> ContainerModel {
+        activity = .importing(url.lastPathComponent)
         let didAccess = url.startAccessingSecurityScopedResource()
         defer {
             if didAccess {
@@ -112,40 +118,32 @@ public final class ContainerEngine: ObservableObject {
     }
 
     public func install(apkURL: URL) async throws -> ContainerModel {
-        let metadata = try parser.parse(url: apkURL)
-
+        activity = .parsing(apkURL.lastPathComponent)
         let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let containerURL = base.appendingPathComponent("Containers/\(metadata.package)")
-        if FileManager.default.fileExists(atPath: containerURL.path) {
-            try FileManager.default.removeItem(at: containerURL)
+        let result = try await Task.detached(priority: .userInitiated) {
+            try Self.installInBackground(apkURL: apkURL, documentsURL: base)
+        }.value
+
+        if !result.nativeLibraries.isEmpty {
+            activity = .converting(result.displayName)
         }
-        try parser.extractToContainer(metadata: metadata, containerURL: containerURL)
-        appendLog("Installed \(metadata.package) from \(apkURL.lastPathComponent)", to: containerURL)
 
-        // Convert each arm64 .so to Mach-O and codesign.
-        let frameworksURL = containerURL.appendingPathComponent("Frameworks")
-        for (name, data) in metadata.nativeLibs {
-            let baseName = (name as NSString).lastPathComponent
-            let outName = baseName.replacingOccurrences(of: ".so", with: ".dylib")
-            let outURL = frameworksURL.appendingPathComponent(outName)
-
+        for library in result.nativeLibraries {
             try DroidShimNativeConverter.convertELFToMachO(
-                data: data,
-                outputPath: outURL.path,
-                installName: metadata.package + "." + outName
+                data: library.data,
+                outputPath: library.outputURL.path,
+                installName: result.package + "." + library.outputURL.lastPathComponent
             )
-
-            try codesign(url: outURL)
+            try codesign(url: library.outputURL)
         }
 
-        let iconURL = containerURL.appendingPathComponent("icon.png")
-        let icon = UIImage(contentsOfFile: iconURL.path)
+        let icon = UIImage(contentsOfFile: result.containerURL.appendingPathComponent("icon.png").path)
 
         let container = ContainerModel(
-            package: metadata.package,
-            name: metadata.displayName,
-            mainActivity: metadata.mainActivity,
-            vmPath: containerURL,
+            package: result.package,
+            name: result.displayName,
+            mainActivity: result.mainActivity,
+            vmPath: result.containerURL,
             state: .installed,
             icon: icon
         )
@@ -154,6 +152,51 @@ public final class ContainerEngine: ObservableObject {
         containers.append(container)
         saveRegistry()
         return container
+    }
+
+    private struct BackgroundInstallResult: Sendable {
+        let package: String
+        let displayName: String
+        let mainActivity: String
+        let containerURL: URL
+        let nativeLibraries: [BackgroundNativeLibrary]
+    }
+
+    private struct BackgroundNativeLibrary: Sendable {
+        let data: Data
+        let outputURL: URL
+    }
+
+    nonisolated private static func installInBackground(apkURL: URL, documentsURL: URL) throws -> BackgroundInstallResult {
+        let parser = APKParser()
+        let metadata = try parser.parse(url: apkURL)
+        let containerURL = documentsURL.appendingPathComponent("Containers/\(metadata.package)")
+        let fm = FileManager.default
+
+        if fm.fileExists(atPath: containerURL.path) {
+            try fm.removeItem(at: containerURL)
+        }
+        try parser.extractToContainer(metadata: metadata, containerURL: containerURL)
+
+        let frameworksURL = containerURL.appendingPathComponent("Frameworks")
+        let libraries = metadata.nativeLibs.map { entry in
+            let name = entry.key
+            let data = entry.value
+            let baseName = (name as NSString).lastPathComponent
+            let outName = baseName.replacingOccurrences(of: ".so", with: ".dylib")
+            return BackgroundNativeLibrary(data: data, outputURL: frameworksURL.appendingPathComponent(outName))
+        }
+
+        Self.appendLog("Installed \(metadata.package) from \(apkURL.lastPathComponent)", to: containerURL)
+        Self.appendLog("Extracted \(metadata.resourceFiles.count) resource files and \(metadata.nativeLibs.count) native libraries", to: containerURL)
+
+        return BackgroundInstallResult(
+            package: metadata.package,
+            displayName: metadata.displayName,
+            mainActivity: metadata.mainActivity,
+            containerURL: containerURL,
+            nativeLibraries: libraries
+        )
     }
 
     private func stageAPKForImport(_ sourceURL: URL) throws -> URL {
@@ -205,7 +248,7 @@ public final class ContainerEngine: ObservableObject {
         Task { @MainActor in
             do {
                 activity = .launching(container.name)
-                appendLog("Launching \(container.package)", to: container.vmPath)
+                Self.appendLog("Launching \(container.package)", to: container.vmPath)
                 let dexData = try Data(contentsOf: container.vmPath.appendingPathComponent("classes.dex"))
                 let dex = try DexFile(data: dexData)
                 let interpreter = ARTInterpreter(dex: dex)
@@ -263,7 +306,7 @@ public final class ContainerEngine: ObservableObject {
             } catch {
                 container.state = .error
                 let message = "Launch error: \(describe(error))"
-                appendLog(message, to: container.vmPath)
+                Self.appendLog(message, to: container.vmPath)
                 activity = .failed(message)
                 print(message)
             }
@@ -304,7 +347,7 @@ public final class ContainerEngine: ObservableObject {
         return error.localizedDescription
     }
 
-    private func appendLog(_ message: String, to containerURL: URL) {
+    nonisolated private static func appendLog(_ message: String, to containerURL: URL) {
         let logURL = containerURL.appendingPathComponent("droidshim.log")
         let line = "[\(ISO8601DateFormatter().string(from: Date()))] \(message)\n"
         if let data = line.data(using: .utf8) {

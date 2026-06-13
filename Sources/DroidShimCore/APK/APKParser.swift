@@ -80,9 +80,9 @@ public final class APKParser {
             throw APKParserError.missingResources
         }
 
-        // Resource files used by layout inflation, drawables, and strings.
+        // Resource files used by layout inflation, drawables, and launcher UI.
         var resourceFiles: [String: Data] = [:]
-        for entry in archive.entries where entry.name.hasPrefix("res/") && !entry.name.hasSuffix("/") {
+        for entry in archive.entries where shouldExtractResource(entry.name) {
             if let data = archive.extract(entry: entry) {
                 resourceFiles[entry.name] = data
             }
@@ -158,6 +158,22 @@ public final class APKParser {
             }
         }
         return nil
+    }
+
+    private func shouldExtractResource(_ path: String) -> Bool {
+        guard path.hasPrefix("res/"), !path.hasSuffix("/") else { return false }
+        let parts = path.split(separator: "/")
+        guard parts.count >= 3 else { return false }
+        let directory = String(parts[1])
+        let ext = (path as NSString).pathExtension.lowercased()
+
+        if directory.hasPrefix("layout") {
+            return ext == "xml"
+        }
+        if directory.hasPrefix("drawable") || directory.hasPrefix("mipmap") {
+            return ["png", "jpg", "jpeg", "webp", "xml"].contains(ext)
+        }
+        return false
     }
 }
 

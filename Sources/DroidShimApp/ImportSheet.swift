@@ -27,7 +27,7 @@ struct ImportSheet: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
-                Text(status)
+                Text(engine.activity.message ?? status)
                     .foregroundColor(.secondary)
 
                 Button("Import APK") {
