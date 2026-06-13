@@ -147,16 +147,16 @@ public final class APKParser {
 
 // MARK: - Minimal in-memory ZIP parser using Compression framework.
 
-private struct ZipEntry {
+struct ZipEntry {
     let name: String
-    let offset: Int
+    let localHeaderOffset: Int
     let compressedSize: UInt64
     let uncompressedSize: UInt64
     let compressionMethod: UInt16
     let crc32: UInt32
 }
 
-private final class ZipArchive {
+final class ZipArchive {
     let data: Data
     var entries: [ZipEntry] = []
 
@@ -174,8 +174,11 @@ private final class ZipArchive {
     }
 
     func extract(entry: ZipEntry) -> Data? {
-        guard entry.offset + Int(entry.compressedSize) <= data.count else { return nil }
-        let compressed = data.subdata(in: entry.offset..<entry.offset + Int(entry.compressedSize))
+        guard let payloadOffset = payloadOffset(for: entry),
+              payloadOffset + Int(entry.compressedSize) <= data.count else {
+            return nil
+        }
+        let compressed = data.subdata(in: payloadOffset..<payloadOffset + Int(entry.compressedSize))
 
         if entry.compressionMethod == 0 {
             return compressed
@@ -188,21 +191,27 @@ private final class ZipArchive {
     private func scan() throws {
         // Find End of Central Directory record.
         guard data.count > 22 else { throw APKParserError.invalidZip }
-        var eocdOffset = 0
-        for i in (0..<(data.count - 22)).reversed() {
+        var eocdOffset: Int?
+        for i in (0...(data.count - 22)).reversed() {
             if data[i] == 0x50 && data[i+1] == 0x4B && data[i+2] == 0x05 && data[i+3] == 0x06 {
                 eocdOffset = i
                 break
             }
         }
-        guard eocdOffset > 0 else { throw APKParserError.invalidZip }
+        guard let eocdOffset else { throw APKParserError.invalidZip }
 
         let cdCount = readUInt16(at: eocdOffset + 10)
         let cdSize = Int(readUInt32(at: eocdOffset + 12))
         let cdOffset = Int(readUInt32(at: eocdOffset + 16))
+        guard cdOffset >= 0,
+              cdSize >= 0,
+              cdOffset + cdSize <= data.count else {
+            throw APKParserError.invalidZip
+        }
 
         var pos = cdOffset
         for _ in 0..<cdCount {
+            guard pos + 46 <= data.count else { throw APKParserError.invalidZip }
             let signature = readUInt32(at: pos)
             guard signature == 0x02014b50 else { throw APKParserError.invalidZip }
             let compression = readUInt16(at: pos + 10)
@@ -213,6 +222,9 @@ private final class ZipArchive {
             let extraLen = Int(readUInt16(at: pos + 30))
             let commentLen = Int(readUInt16(at: pos + 32))
             let localHeaderOffset = Int(readUInt32(at: pos + 42))
+            guard pos + 46 + nameLen + extraLen + commentLen <= data.count else {
+                throw APKParserError.invalidZip
+            }
             let nameData = data.subdata(in: pos + 46..<pos + 46 + nameLen)
             guard let name = String(data: nameData, encoding: .utf8) else {
                 throw APKParserError.invalidZip
@@ -220,7 +232,7 @@ private final class ZipArchive {
 
             entries.append(ZipEntry(
                 name: name,
-                offset: localHeaderOffset + 30 + nameLen + extraLen,
+                localHeaderOffset: localHeaderOffset,
                 compressedSize: compSize,
                 uncompressedSize: uncompSize,
                 compressionMethod: compression,
@@ -231,22 +243,32 @@ private final class ZipArchive {
         }
     }
 
-    private func readUInt16(at offset: Int) -> UInt16 {
-        var value: UInt16 = 0
-        data.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt16.self) else { return }
-            value = base[offset / 2]
+    private func payloadOffset(for entry: ZipEntry) -> Int? {
+        let offset = entry.localHeaderOffset
+        guard offset >= 0,
+              offset + 30 <= data.count,
+              readUInt32(at: offset) == 0x04034b50 else {
+            return nil
         }
-        return value
+        let nameLen = Int(readUInt16(at: offset + 26))
+        let extraLen = Int(readUInt16(at: offset + 28))
+        let payloadOffset = offset + 30 + nameLen + extraLen
+        guard payloadOffset <= data.count else { return nil }
+        return payloadOffset
+    }
+
+    private func readUInt16(at offset: Int) -> UInt16 {
+        guard offset >= 0, offset + 2 <= data.count else { return 0 }
+        return UInt16(data[offset])
+            | (UInt16(data[offset + 1]) << 8)
     }
 
     private func readUInt32(at offset: Int) -> UInt32 {
-        var value: UInt32 = 0
-        data.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt32.self) else { return }
-            value = base[offset / 4]
-        }
-        return value
+        guard offset >= 0, offset + 4 <= data.count else { return 0 }
+        return UInt32(data[offset])
+            | (UInt32(data[offset + 1]) << 8)
+            | (UInt32(data[offset + 2]) << 16)
+            | (UInt32(data[offset + 3]) << 24)
     }
 
     private func readUInt64Like(at offset: Int) -> UInt64 {
