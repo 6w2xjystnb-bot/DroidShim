@@ -24,4 +24,16 @@ final class RuntimeHandleTests: XCTestCase {
 
         XCTAssertTrue(JavaHeap.shared.object(for: reference) === object)
     }
+
+    func testInvoke35cDecodesMethodWordBeforeRegisterWord() {
+        let decoded = ARTInterpreter.decodeInvoke35c(
+            first: 0x526e,
+            methodWord: 0x1234,
+            registerWord: 0x4321
+        )
+
+        XCTAssertEqual(decoded.argumentCount, 2)
+        XCTAssertEqual(decoded.methodIndex, 0x1234)
+        XCTAssertEqual(decoded.registers, [1, 2, 3, 4, 5])
+    }
 }

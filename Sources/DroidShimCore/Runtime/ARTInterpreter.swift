@@ -53,6 +53,13 @@ public final class Frame {
 public final class ARTThread {
     public var frames: [Frame] = []
     public var exception: JavaObject?
+    public var pendingResult: JavaValue = .void
+}
+
+struct DecodedInvoke35c {
+    let argumentCount: Int
+    let methodIndex: UInt32
+    let registers: [Int]
 }
 
 /// Dalvik interpreter.  One instance per loaded DEX file.
@@ -97,6 +104,21 @@ public final class ARTInterpreter {
 
     private func u16pair(_ low: UInt16, _ high: UInt16) -> UInt32 {
         return (UInt32(high) << 16) | UInt32(low)
+    }
+
+    static func decodeInvoke35c(first: UInt16, methodWord: UInt16, registerWord: UInt16) -> DecodedInvoke35c {
+        let argumentCount = Int((first >> 8) & 0xf)
+        let regG = Int((first >> 12) & 0xf)
+        let registers = [
+            Int(registerWord & 0xf),
+            Int((registerWord >> 4) & 0xf),
+            Int((registerWord >> 8) & 0xf),
+            Int((registerWord >> 12) & 0xf),
+            regG
+        ]
+        return DecodedInvoke35c(argumentCount: argumentCount,
+                                methodIndex: UInt32(methodWord),
+                                registers: registers)
     }
 
     // MARK: - Execution entry point
@@ -159,10 +181,10 @@ public final class ARTInterpreter {
                 advance(1)
 
             case 0x02: // move/from16 vAAAA, vBBBB
-                let vA = UInt32(insns[current.pc + 1])
-                let vB = UInt32(insns[current.pc + 2])
+                let vA = Int(inst >> 8)
+                let vB = Int(insns[current.pc + 1])
                 current.registers[Int(vA)] = current.registers[Int(vB)]
-                advance(3)
+                advance(2)
 
             case 0x03: // move/16 vAAAA, vBBBB
                 let vA = UInt32(insns[current.pc + 1])
@@ -177,29 +199,84 @@ public final class ARTInterpreter {
                 current.registers[vA + 1] = current.registers[vB + 1]
                 advance(1)
 
+            case 0x05: // move-wide/from16 vAA, vBBBB
+                let vA = Int(inst >> 8)
+                let vB = Int(insns[current.pc + 1])
+                current.registers[vA] = current.registers[vB]
+                current.registers[vA + 1] = current.registers[vB + 1]
+                advance(2)
+
+            case 0x06: // move-wide/16 vAAAA, vBBBB
+                let vA = Int(insns[current.pc + 1])
+                let vB = Int(insns[current.pc + 2])
+                current.registers[vA] = current.registers[vB]
+                current.registers[vA + 1] = current.registers[vB + 1]
+                advance(3)
+
             case 0x07: // move-object vA, vB
                 let vA = Int(a)
                 let vB = Int(b)
                 current.registers[vA] = current.registers[vB]
                 advance(1)
 
-            case 0x0a: // const/4 vA, #+B
+            case 0x08: // move-object/from16 vAA, vBBBB
+                let vA = Int(inst >> 8)
+                let vB = Int(insns[current.pc + 1])
+                current.registers[vA] = current.registers[vB]
+                advance(2)
+
+            case 0x09: // move-object/16 vAAAA, vBBBB
+                let vA = Int(insns[current.pc + 1])
+                let vB = Int(insns[current.pc + 2])
+                current.registers[vA] = current.registers[vB]
+                advance(3)
+
+            case 0x0a: // move-result vAA
+                let vA = Int(inst >> 8)
+                if case .int(let value) = thread.pendingResult {
+                    current.registers[vA] = UInt32(bitPattern: value)
+                } else {
+                    current.registers[vA] = 0
+                }
+                advance(1)
+
+            case 0x0b: // move-result-wide vAA
+                let vA = Int(inst >> 8)
+                if case .long(let value) = thread.pendingResult {
+                    current.registers[vA] = UInt32(truncatingIfNeeded: value)
+                    current.registers[vA + 1] = UInt32(truncatingIfNeeded: value >> 32)
+                } else {
+                    current.registers[vA] = 0
+                    current.registers[vA + 1] = 0
+                }
+                advance(1)
+
+            case 0x0c: // move-result-object vAA
+                let vA = Int(inst >> 8)
+                if case .object(let object) = thread.pendingResult {
+                    current.registers[vA] = JavaHeap.shared.reference(for: object)
+                } else {
+                    current.registers[vA] = 0
+                }
+                advance(1)
+
+            case 0x12: // const/4 vA, #+B
                 let vA = Int(a)
                 current.registers[vA] = UInt32(bitPattern: s4(UInt32(b)))
                 advance(1)
 
-            case 0x0b: // const/16 vAA, #BBBB
+            case 0x13: // const/16 vAA, #+BBBB
                 let vA = Int(inst >> 8)
                 current.registers[vA] = UInt32(bitPattern: s16(UInt32(insns[current.pc + 1])))
                 advance(2)
 
-            case 0x0c: // const vAA, #BBBBBBBB
+            case 0x14: // const vAA, #+BBBBBBBB
                 let vA = Int(inst >> 8)
                 let value = u16pair(insns[current.pc + 1], insns[current.pc + 2])
                 current.registers[vA] = value
                 advance(3)
 
-            case 0x0d: // const/high16 vAA, #BBBB0000
+            case 0x15: // const/high16 vAA, #+BBBB0000
                 let vA = Int(inst >> 8)
                 let high = UInt32(insns[current.pc + 1]) << 16
                 current.registers[vA] = high
@@ -225,31 +302,30 @@ public final class ARTInterpreter {
 
             case 0x0e: // return-void
                 thread.frames.removeLast()
+                thread.pendingResult = .void
 
             case 0x0f: // return vAA
                 let vA = Int(inst >> 8)
                 let value = JavaValue.int(Int32(bitPattern: current.registers[vA]))
                 thread.frames.removeLast()
                 if thread.frames.isEmpty { return value }
-                if let parent = current.returnFrame {
-                    // Place return in parent result register (v0 by convention).
-                    parent.registers[0] = current.registers[vA]
-                }
+                thread.pendingResult = value
 
             case 0x10: // return-wide vAA
                 let vA = Int(inst >> 8)
+                let low = UInt64(current.registers[vA])
+                let high = UInt64(current.registers[vA + 1]) << 32
+                let value = JavaValue.long(Int64(bitPattern: high | low))
                 thread.frames.removeLast()
-                if let parent = current.returnFrame {
-                    parent.registers[0] = current.registers[vA]
-                    parent.registers[1] = current.registers[vA + 1]
-                }
+                if thread.frames.isEmpty { return value }
+                thread.pendingResult = value
 
             case 0x11: // return-object vAA
                 let vA = Int(inst >> 8)
+                let value = JavaValue.object(object(from: current.registers[vA]))
                 thread.frames.removeLast()
-                if let parent = current.returnFrame {
-                    parent.registers[0] = current.registers[vA]
-                }
+                if thread.frames.isEmpty { return value }
+                thread.pendingResult = value
 
             case 0x28: // goto +AA
                 current.pc += Int(s8(UInt32(a)))
@@ -398,17 +474,13 @@ public final class ARTInterpreter {
                 staticFields[key] = .int(Int32(bitPattern: current.registers[vA]))
                 advance(2)
 
-            case 0x6e, 0x71, 0x72, 0x76: // invoke-virtual/static/interface/super
-                let count = Int(a)
-                let argWord = insns[current.pc + 1]
-                let methodIdx = UInt32(insns[current.pc + 2])
-                let regs = [
-                    Int(argWord & 0xf),
-                    Int((argWord >> 4) & 0xf),
-                    Int((argWord >> 8) & 0xf),
-                    Int((argWord >> 12) & 0xf),
-                    Int((inst >> 12) & 0xf)
-                ]
+            case 0x6e, 0x6f, 0x70, 0x71, 0x72: // invoke-virtual/super/direct/static/interface
+                let decoded = Self.decodeInvoke35c(first: inst,
+                                                   methodWord: insns[current.pc + 1],
+                                                   registerWord: insns[current.pc + 2])
+                let count = decoded.argumentCount
+                let methodIdx = decoded.methodIndex
+                let regs = decoded.registers
 
                 guard let methodRef = dex.methodRef(at: methodIdx) else {
                     throw ARTError.methodNotFound("index \(methodIdx)")
@@ -416,8 +488,17 @@ public final class ARTInterpreter {
 
                 // Build argument list from decoded register list.
                 var args: [JavaValue] = []
+                let hasReceiver = op != 0x71
                 for i in 0..<count {
-                    args.append(.int(Int32(bitPattern: current.registers[regs[i]])))
+                    if hasReceiver && i == 0 {
+                        args.append(.object(object(from: current.registers[regs[i]])))
+                    } else {
+                        let parameterIndex = i - (hasReceiver ? 1 : 0)
+                        let descriptor = parameterIndex >= 0 && parameterIndex < methodRef.proto.parameterTypes.count
+                            ? methodRef.proto.parameterTypes[parameterIndex].descriptor
+                            : "I"
+                        args.append(javaValue(fromRegister: regs[i], descriptor: descriptor, frame: current))
+                    }
                 }
 
                 let targetName = methodRef.classType.descriptor
@@ -428,11 +509,12 @@ public final class ARTInterpreter {
                                              receiverReg: regs[0],
                                              argValues: args,
                                              current: current) {
-                case .value(let v):
-                    current.registers[Int(inst >> 8)] = UInt32(bitPattern: v)
+                case .value(let value):
+                    thread.pendingResult = value
                     advance(3)
                     continue
                 case .void:
+                    thread.pendingResult = .void
                     advance(3)
                     continue
                 case .notIntercepted:
@@ -451,6 +533,7 @@ public final class ARTInterpreter {
                         this: nil,
                         args: args
                     )
+                    thread.pendingResult = .void
                     advance(3)
                     break
                 }
@@ -540,11 +623,26 @@ public final class ARTInterpreter {
         return JavaHeap.shared.object(for: bits)
     }
 
+    private func javaValue(fromRegister register: Int, descriptor: String, frame: Frame) -> JavaValue {
+        if descriptor == "J" {
+            let low = UInt64(frame.registers[register])
+            let high = UInt64(frame.registers[register + 1]) << 32
+            return .long(Int64(bitPattern: high | low))
+        }
+        if descriptor.hasPrefix("L") || descriptor.hasPrefix("[") {
+            return .object(object(from: frame.registers[register]))
+        }
+        if descriptor == "Z" {
+            return .boolean(frame.registers[register] != 0)
+        }
+        return .int(Int32(bitPattern: frame.registers[register]))
+    }
+
     /// Result of intercepting a framework method call.
     private enum FrameworkResult {
         case notIntercepted
         case void
-        case value(Int32)
+        case value(JavaValue)
     }
 
     /// Intercept framework calls that the DEX bytecode makes against
@@ -557,12 +655,18 @@ public final class ARTInterpreter {
         let name = methodRef.name
         let desc = methodRef.classType.descriptor
 
+        if desc.hasPrefix("Landroid/") || desc == "Ljava/lang/Object;" {
+            if name == "<init>" || name == "onCreate" || name == "onResume" || name == "onPause" || name == "onDestroy" {
+                return .void
+            }
+        }
+
         // Activity.findViewById(I)Landroid/view/View;
         // argValues[0] is the Activity receiver, argValues[1] is the resource id.
         if name == "findViewById" && desc.hasSuffix("Activity;") && argValues.count >= 2 {
             if case .int(let id) = argValues[1] {
                 let view = bridge.findViewById(id: id)
-                return .value(Int32(bitPattern: JavaHeap.shared.reference(for: view)))
+                return .value(.object(view))
             }
         }
 
