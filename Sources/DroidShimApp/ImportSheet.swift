@@ -10,6 +10,10 @@ import SwiftUI
 import UniformTypeIdentifiers
 import DroidShimCore
 
+private extension UTType {
+    static let androidPackage = UTType(exportedAs: "com.android.package-archive", conformingTo: .data)
+}
+
 struct ImportSheet: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var engine: ContainerEngine
@@ -48,7 +52,7 @@ struct ImportSheet: View {
             }
             .fileImporter(
                 isPresented: $isImporting,
-                allowedContentTypes: [UTType(filenameExtension: "apk") ?? UTType.data],
+                allowedContentTypes: [.item, .data, .androidPackage],
                 allowsMultipleSelection: false
             ) { result in
                 handleImport(result: result)
@@ -75,14 +79,14 @@ struct ImportSheet: View {
                     }
                 } catch {
                     await MainActor.run {
-                        errorMessage = error.localizedDescription
+                        errorMessage = String(describing: error)
                         showError = true
                         status = "Install failed"
                     }
                 }
             }
         case .failure(let error):
-            errorMessage = error.localizedDescription
+            errorMessage = String(describing: error)
             showError = true
         }
     }

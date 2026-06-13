@@ -161,6 +161,9 @@ public final class ContainerEngine: ObservableObject {
         guard fm.fileExists(atPath: sourceURL.path) else {
             throw ContainerEngineError.importFailed("File is not accessible: \(sourceURL.lastPathComponent)")
         }
+        guard sourceURL.pathExtension.lowercased() == "apk" else {
+            throw ContainerEngineError.importFailed("Selected file is not an .apk: \(sourceURL.lastPathComponent)")
+        }
 
         let importsURL = fm.urls(for: .cachesDirectory, in: .userDomainMask).first!
             .appendingPathComponent("ImportedAPKs", isDirectory: true)
