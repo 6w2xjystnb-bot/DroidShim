@@ -10,7 +10,7 @@ let package = Package(
     products: [
         .library(
             name: "DroidShimCore",
-            type: .dynamic,
+            type: .static,
             targets: ["DroidShimCore"]
         ),
         .executable(
