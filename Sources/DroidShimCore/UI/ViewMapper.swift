@@ -36,8 +36,9 @@ public final class ViewMapper {
     /// Create a UIKit view from an Android class name and attribute dictionary.
     public func createView(androidClass: String, attributes: [String: String]) -> UIView {
         let view: UIView
+        let className = normalizedClassName(androidClass)
 
-        switch androidClass {
+        switch className {
         case "android.widget.LinearLayout":
             let stack = UIStackView()
             stack.axis = (attributes["android:orientation"] == "horizontal") ? .horizontal : .vertical
@@ -54,7 +55,7 @@ public final class ViewMapper {
 
         case "android.widget.TextView":
             let label = UILabel()
-            label.text = attributes["android:text"] ?? ""
+            label.text = resolvedText(attributes["android:text"] ?? "")
             if let size = attributes["android:textSize"] {
                 label.font = UIFont.systemFont(ofSize: spValue(size))
             }
@@ -77,7 +78,7 @@ public final class ViewMapper {
 
         case "android.widget.Button":
             let button = UIButton(type: .system)
-            button.setTitle(attributes["android:text"] ?? "", for: .normal)
+            button.setTitle(resolvedText(attributes["android:text"] ?? ""), for: .normal)
             if let click = attributes["android:onClick"] {
                 button.addTarget(self, action: #selector(handleButtonTap(_:)), for: .touchUpInside)
                 objc_setAssociatedObject(button, &AssociatedKeys.onClick, click, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
@@ -173,6 +174,28 @@ public final class ViewMapper {
             // UIEdgeInsets requires a layout pass; store for later.
             view.layoutMargins = UIEdgeInsets(top: padding, left: padding, bottom: padding, right: padding)
         }
+    }
+
+    private func normalizedClassName(_ className: String) -> String {
+        if className.contains(".") {
+            return className
+        }
+        switch className {
+        case "View", "SurfaceView":
+            return "android.view.\(className)"
+        case "LinearLayout", "FrameLayout", "ScrollView", "TextView", "EditText", "Button", "ImageView", "RecyclerView":
+            return "android.widget.\(className)"
+        default:
+            return className
+        }
+    }
+
+    private func resolvedText(_ value: String) -> String {
+        if let id = parseId(value),
+           let text = resolver.resolveString(id: id) {
+            return text
+        }
+        return value
     }
 
     private func parseId(_ ref: String) -> UInt32? {

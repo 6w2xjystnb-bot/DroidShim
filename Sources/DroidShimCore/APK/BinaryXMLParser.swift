@@ -346,3 +346,231 @@ public final class BinaryXMLParser {
         return (result, i)
     }
 }
+
+/// Generic Android binary XML decoder used for layouts under res/layout*.
+/// It preserves element names and basic typed attributes as text XML that the
+/// lightweight LayoutInflater can consume.
+public final class BinaryXMLDocumentDecoder {
+    private let data: Data
+    private var stringPool: [String] = []
+
+    public init(data: Data) {
+        self.data = data
+    }
+
+    public func decode() throws -> String {
+        guard data.count >= 8 else { throw BinaryXMLParserError.truncated }
+        let type = readUInt16(at: 0)
+        guard type == 0x0003 else { throw BinaryXMLParserError.invalidChunkType(type) }
+        let headerSize = Int(readUInt16(at: 2))
+        let chunkSize = Int(readUInt32(at: 4))
+        guard data.count >= chunkSize else { throw BinaryXMLParserError.truncated }
+
+        var output = ""
+        var depth = 0
+        var offset = headerSize
+
+        while offset < chunkSize {
+            guard offset + 8 <= data.count else { throw BinaryXMLParserError.truncated }
+            let childType = readUInt16(at: offset)
+            let childHeaderSize = Int(readUInt16(at: offset + 2))
+            let childChunkSize = Int(readUInt32(at: offset + 4))
+            guard childChunkSize > 0, offset + childChunkSize <= data.count else {
+                throw BinaryXMLParserError.truncated
+            }
+
+            guard let kind = AXMLChunkType(rawValue: childType) else {
+                offset += childChunkSize
+                continue
+            }
+
+            switch kind {
+            case .stringPool:
+                try parseStringPool(at: offset, headerSize: childHeaderSize)
+            case .startElement:
+                let element = try readStartElement(at: offset)
+                let name = try string(at: element.nameIndex)
+                let attrs = try element.attributes
+                    .map { try "\(attributeName($0))=\"\(attributeValue($0))\"" }
+                    .joined(separator: " ")
+                let indent = String(repeating: "  ", count: depth)
+                output += attrs.isEmpty ? "\(indent)<\(name)>\n" : "\(indent)<\(name) \(attrs)>\n"
+                depth += 1
+            case .endElement:
+                let nameIndex = readUInt32(at: offset + 16)
+                depth = max(0, depth - 1)
+                let indent = String(repeating: "  ", count: depth)
+                output += "\(indent)</\(try string(at: nameIndex))>\n"
+            default:
+                break
+            }
+
+            offset += childChunkSize
+        }
+
+        return output
+    }
+
+    private func parseStringPool(at offset: Int, headerSize: Int) throws {
+        let stringCount = Int(readUInt32(at: offset + 8))
+        let flags = readUInt32(at: offset + 16)
+        let stringsStart = Int(readUInt32(at: offset + 20))
+        let isUTF8 = (flags & 0x100) != 0
+        let offsetsOffset = offset + headerSize
+
+        stringPool.removeAll(keepingCapacity: true)
+        stringPool.reserveCapacity(stringCount)
+        for i in 0..<stringCount {
+            let relativeOffset = Int(readUInt32(at: offsetsOffset + i * 4))
+            let absoluteOffset = offset + stringsStart + relativeOffset
+            stringPool.append(try decodeString(at: absoluteOffset, isUTF8: isUTF8))
+        }
+    }
+
+    private func readStartElement(at offset: Int) throws -> AXMLStartElement {
+        let lineNumber = readUInt32(at: offset + 8)
+        let nsUri = readUInt32(at: offset + 12)
+        let nameIdx = readUInt32(at: offset + 16)
+        let attrStart = Int(readUInt16(at: offset + 20))
+        let attrSize = Int(readUInt16(at: offset + 22))
+        let attrCount = Int(readUInt16(at: offset + 24))
+
+        var attrs: [AXMLAttribute] = []
+        var attrOffset = offset + attrStart
+        for _ in 0..<attrCount {
+            guard attrOffset + 20 <= data.count else { throw BinaryXMLParserError.truncated }
+            attrs.append(AXMLAttribute(
+                namespaceUri: readUInt32(at: attrOffset),
+                nameIndex: readUInt32(at: attrOffset + 4),
+                rawValue: readUInt32(at: attrOffset + 8),
+                typedValue: AXMLTypedValue(
+                    size: readUInt16(at: attrOffset + 12),
+                    res0: data[attrOffset + 14],
+                    dataType: data[attrOffset + 15],
+                    data: readUInt32(at: attrOffset + 16)
+                )
+            ))
+            attrOffset += attrSize
+        }
+
+        return AXMLStartElement(lineNumber: lineNumber,
+                                namespaceUri: nsUri,
+                                nameIndex: nameIdx,
+                                attributes: attrs)
+    }
+
+    private func attributeName(_ attr: AXMLAttribute) throws -> String {
+        let name = try string(at: attr.nameIndex)
+        if attr.namespaceUri != 0xffffffff,
+           let namespace = try? string(at: attr.namespaceUri),
+           namespace.contains("schemas.android.com/apk/res/android") {
+            return "android:\(name)"
+        }
+        return name
+    }
+
+    private func attributeValue(_ attr: AXMLAttribute) throws -> String {
+        if attr.rawValue != 0xffffffff,
+           attr.rawValue < UInt32(stringPool.count) {
+            return escape(try string(at: attr.rawValue))
+        }
+
+        let name = try attributeName(attr)
+        let value = attr.typedValue
+        switch value.dataType {
+        case 0x01: // TYPE_REFERENCE
+            return String(value.data)
+        case 0x03: // TYPE_STRING
+            return escape(try string(at: value.data))
+        case 0x05: // TYPE_DIMENSION
+            return decodeDimension(value.data)
+        case 0x10: // TYPE_INT_DEC
+            if name.hasSuffix("layout_width") || name.hasSuffix("layout_height") {
+                if value.data == 0xffffffff { return "match_parent" }
+                if value.data == 0xfffffffe { return "wrap_content" }
+            }
+            return String(Int32(bitPattern: value.data))
+        case 0x11: // TYPE_INT_HEX
+            return String(format: "0x%08x", value.data)
+        case 0x12: // TYPE_INT_BOOLEAN
+            return value.data == 0 ? "false" : "true"
+        case 0x1c, 0x1d, 0x1e, 0x1f: // colors
+            return String(format: "#%08x", value.data)
+        default:
+            return String(value.data)
+        }
+    }
+
+    private func decodeDimension(_ data: UInt32) -> String {
+        let unitNames = ["px", "dp", "sp", "pt", "in", "mm"]
+        let unit = Int(data & 0xf)
+        let signed = Int32(bitPattern: data) >> 8
+        let suffix = unit < unitNames.count ? unitNames[unit] : "px"
+        return "\(signed)\(suffix)"
+    }
+
+    private func string(at index: UInt32) throws -> String {
+        guard index < UInt32(stringPool.count) else {
+            throw BinaryXMLParserError.invalidStringIndex(index)
+        }
+        return stringPool[Int(index)]
+    }
+
+    private func escape(_ value: String) -> String {
+        return value
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
+    private func decodeString(at offset: Int, isUTF8: Bool) throws -> String {
+        var pos = offset
+        if isUTF8 {
+            let (_, p1) = readULEB128(at: pos); pos = p1
+            let (byteLen, p2) = readULEB128(at: pos); pos = p2
+            guard pos + Int(byteLen) <= data.count else { throw BinaryXMLParserError.truncated }
+            let bytes = data.subdata(in: pos..<pos + Int(byteLen))
+            guard let s = String(data: bytes, encoding: .utf8) else {
+                throw BinaryXMLParserError.invalidStringIndex(0)
+            }
+            return s
+        }
+
+        let (charLen, p1) = readULEB128(at: pos); pos = p1
+        let byteLen = Int(charLen) * 2
+        guard pos + byteLen <= data.count else { throw BinaryXMLParserError.truncated }
+        let bytes = data.subdata(in: pos..<pos + byteLen)
+        guard let s = String(data: bytes, encoding: .utf16LittleEndian) else {
+            throw BinaryXMLParserError.invalidStringIndex(0)
+        }
+        return s
+    }
+
+    private func readUInt16(at offset: Int) -> UInt16 {
+        guard offset >= 0, offset + 2 <= data.count else { return 0 }
+        return UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+    }
+
+    private func readUInt32(at offset: Int) -> UInt32 {
+        guard offset >= 0, offset + 4 <= data.count else { return 0 }
+        return UInt32(data[offset])
+            | (UInt32(data[offset + 1]) << 8)
+            | (UInt32(data[offset + 2]) << 16)
+            | (UInt32(data[offset + 3]) << 24)
+    }
+
+    private func readULEB128(at offset: Int) -> (value: UInt32, next: Int) {
+        var result: UInt32 = 0
+        var shift: UInt32 = 0
+        var i = offset
+        while i < data.count {
+            let byte = data[i]
+            i += 1
+            result |= UInt32(byte & 0x7f) << shift
+            if (byte & 0x80) == 0 { break }
+            shift += 7
+        }
+        return (result, i)
+    }
+}

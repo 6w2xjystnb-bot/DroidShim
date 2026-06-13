@@ -38,8 +38,14 @@ public final class ResourceResolver {
         guard let dex = dex else { return }
         for def in dex.classDefs {
             let name = dex.className(at: def.classIdx)
-            guard name.hasPrefix("R$") else { continue }
-            let inner = String(name.dropFirst(2))
+            let inner: String
+            if name.hasPrefix("R$") {
+                inner = String(name.dropFirst(2))
+            } else if let range = name.range(of: ".R$") {
+                inner = String(name[range.upperBound...])
+            } else {
+                continue
+            }
             var fields: [String: Int32] = [:]
             for (i, sf) in def.staticFields.enumerated() {
                 guard let ref = dex.fieldRef(at: sf.fieldId) else { continue }
@@ -98,18 +104,49 @@ public final class ResourceResolver {
     }
 
     public func resolveLayout(id: UInt32) -> String? {
-        // Phase 1: binary XML layouts are not decoded to text.
-        // Return a cached text layout if the APK shipped one under res/layout-raw/.
-        return nil
+        guard let name = nameForRField(innerClass: "layout", value: Int32(bitPattern: id)) else {
+            return nil
+        }
+        return resolveLayout(named: name)
     }
 
     public func resolveLayout(named name: String) -> String? {
-        let url = containerURL.appendingPathComponent("res/layout/\(name).xml")
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        return try? String(contentsOf: url, encoding: .utf8)
+        guard let url = layoutURL(named: name),
+              let data = try? Data(contentsOf: url) else {
+            return nil
+        }
+        if isBinaryXML(data) {
+            return try? BinaryXMLDocumentDecoder(data: data).decode()
+        }
+        return String(data: data, encoding: .utf8)
     }
 
     // MARK: - Private
+
+    private func layoutURL(named name: String) -> URL? {
+        let fm = FileManager.default
+        let exactURL = containerURL.appendingPathComponent("res/layout/\(name).xml")
+        if fm.fileExists(atPath: exactURL.path) {
+            return exactURL
+        }
+
+        let resURL = containerURL.appendingPathComponent("res")
+        guard let dirs = try? fm.contentsOfDirectory(at: resURL, includingPropertiesForKeys: nil) else {
+            return nil
+        }
+        for dir in dirs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+            where dir.lastPathComponent.hasPrefix("layout") {
+            let candidate = dir.appendingPathComponent("\(name).xml")
+            if fm.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    private func isBinaryXML(_ data: Data) -> Bool {
+        return data.count >= 2 && data[0] == 0x03 && data[1] == 0x00
+    }
 
     private func drawablePath(for id: UInt32) -> String? {
         // Resource ID format: 0xPPTTEEEE.  Drawable type IDs are typically 0x02.

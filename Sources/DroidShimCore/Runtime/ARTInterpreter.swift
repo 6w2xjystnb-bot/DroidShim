@@ -115,7 +115,7 @@ public final class ARTInterpreter {
                 frame.registers[regIdx] = UInt32(bitPattern: v)
                 regIdx += 1
             case .object(let obj):
-                frame.registers[regIdx] = UInt32(bitPattern: Int32(truncatingIfNeeded: Int(bitPattern: Unmanaged.passUnretained(obj ?? JavaObject(className: "null")).toOpaque())))
+                frame.registers[regIdx] = JavaHeap.shared.reference(for: obj)
                 regIdx += 1
             default:
                 regIdx += 1
@@ -211,7 +211,7 @@ public final class ARTInterpreter {
                 let text = dex.strings[Int(stringIdx)].raw
                 let obj = JavaHeap.shared.allocate(className: "java.lang.String")
                 obj.fields["__value"] = text
-                current.registers[vA] = UInt32(bitPattern: Int32(truncatingIfNeeded: Int(bitPattern: Unmanaged.passUnretained(obj).toOpaque())))
+                current.registers[vA] = JavaHeap.shared.reference(for: obj)
                 advance(2)
 
             case 0x1b: // const-string/jumbo vAA, string@BBBBBBBB
@@ -220,7 +220,7 @@ public final class ARTInterpreter {
                 let text = dex.strings[Int(stringIdx)].raw
                 let obj = JavaHeap.shared.allocate(className: "java.lang.String")
                 obj.fields["__value"] = text
-                current.registers[vA] = UInt32(bitPattern: Int32(truncatingIfNeeded: Int(bitPattern: Unmanaged.passUnretained(obj).toOpaque())))
+                current.registers[vA] = JavaHeap.shared.reference(for: obj)
                 advance(3)
 
             case 0x0e: // return-void
@@ -304,7 +304,7 @@ public final class ARTInterpreter {
                 let typeIdx = insns[current.pc + 1]
                 let className = dex.className(at: UInt32(typeIdx))
                 let obj = JavaHeap.shared.allocate(className: className)
-                current.registers[vA] = UInt32(bitPattern: Int32(truncatingIfNeeded: Int(bitPattern: Unmanaged.passUnretained(obj).toOpaque())))
+                current.registers[vA] = JavaHeap.shared.reference(for: obj)
                 advance(2)
 
             case 0x23: // new-array vAA, vBB, type@CCCC
@@ -314,7 +314,7 @@ public final class ARTInterpreter {
                 let className = dex.className(at: UInt32(typeIdx))
                 let length = Int(Int32(bitPattern: current.registers[vB]))
                 let obj = JavaHeap.shared.allocateArray(className: className, length: length)
-                current.registers[vA] = UInt32(bitPattern: Int32(truncatingIfNeeded: Int(bitPattern: Unmanaged.passUnretained(obj).toOpaque())))
+                current.registers[vA] = JavaHeap.shared.reference(for: obj)
                 advance(2)
 
             case 0x44: // aget vAA, vBB, vCC
@@ -537,9 +537,7 @@ public final class ARTInterpreter {
     // MARK: - Helpers
 
     private func object(from bits: UInt32) -> JavaObject? {
-        let ptr = UnsafeMutableRawPointer(bitPattern: Int(UInt32(bitPattern: Int32(bits))))
-        guard let p = ptr else { return nil }
-        return Unmanaged<JavaObject>.fromOpaque(p).takeUnretainedValue()
+        return JavaHeap.shared.object(for: bits)
     }
 
     /// Result of intercepting a framework method call.
@@ -564,7 +562,7 @@ public final class ARTInterpreter {
         if name == "findViewById" && desc.hasSuffix("Activity;") && argValues.count >= 2 {
             if case .int(let id) = argValues[1] {
                 let view = bridge.findViewById(id: id)
-                return .value(Int32(truncatingIfNeeded: Int(bitPattern: Unmanaged.passUnretained(view).toOpaque())))
+                return .value(Int32(bitPattern: JavaHeap.shared.reference(for: view)))
             }
         }
 

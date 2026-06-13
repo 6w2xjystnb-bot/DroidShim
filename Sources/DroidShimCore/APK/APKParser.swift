@@ -37,6 +37,7 @@ public struct APKMetadata {
     public let iconPath: String
     public let dexData: Data
     public let arscData: Data
+    public let resourceFiles: [String: Data]
     public let nativeLibs: [String: Data]
     public let iconData: Data?
 
@@ -79,6 +80,14 @@ public final class APKParser {
             throw APKParserError.missingResources
         }
 
+        // Resource files used by layout inflation, drawables, and strings.
+        var resourceFiles: [String: Data] = [:]
+        for entry in archive.entries where entry.name.hasPrefix("res/") && !entry.name.hasSuffix("/") {
+            if let data = archive.extract(entry: entry) {
+                resourceFiles[entry.name] = data
+            }
+        }
+
         // Native libraries (arm64 only in Phase 1).
         var nativeLibs: [String: Data] = [:]
         let libPrefix = "lib/arm64-v8a/"
@@ -100,6 +109,7 @@ public final class APKParser {
             iconPath: iconPath ?? "",
             dexData: dexData,
             arscData: arscData,
+            resourceFiles: resourceFiles,
             nativeLibs: nativeLibs,
             iconData: iconData
         )
@@ -115,6 +125,12 @@ public final class APKParser {
         try metadata.arscData.write(to: containerURL.appendingPathComponent("resources.arsc"))
         if let icon = metadata.iconData {
             try icon.write(to: containerURL.appendingPathComponent("icon.png"))
+        }
+
+        for (path, data) in metadata.resourceFiles {
+            let destination = containerURL.appendingPathComponent(path)
+            try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: destination)
         }
 
         let frameworksURL = containerURL.appendingPathComponent("Frameworks")
