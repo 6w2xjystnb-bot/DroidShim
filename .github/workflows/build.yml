@@ -96,7 +96,13 @@ jobs:
           unzip -q DroidShim-sideload-unsigned.ipa -d ipa-check
           test -d ipa-check/Payload/DroidShimApp.app
           test -f ipa-check/Payload/DroidShimApp.app/DroidShimApp
+          test ! -f ipa-check/Payload/DroidShimApp.app/DroidShimApp.debug.dylib
+          test ! -f ipa-check/Payload/DroidShimApp.app/__preview.dylib
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' ipa-check/Payload/DroidShimApp.app/Info.plist
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' ipa-check/Payload/DroidShimApp.app/Info.plist)" = "DroidShimApp"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' ipa-check/Payload/DroidShimApp.app/Info.plist)" = "APPL"
+          /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' ipa-check/Payload/DroidShimApp.app/Info.plist
+          /usr/libexec/PlistBuddy -c 'Print :UIDeviceFamily:0' ipa-check/Payload/DroidShimApp.app/Info.plist
           find ipa-check/Payload/DroidShimApp.app -maxdepth 2 -type f | sort
 
       - name: Upload Artifacts
