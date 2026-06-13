@@ -73,7 +73,7 @@ struct ImportSheet: View {
                 do {
                     _ = try await engine.openAPK(from: url, launchAfterInstall: launchAfterImport)
                     await MainActor.run {
-                        status = launchAfterImport ? "Opening..." : "Installed successfully"
+                        status = launchAfterImport ? "Imported. Tap Play to run." : "Installed successfully"
                         isPresented = false
                     }
                 } catch {
