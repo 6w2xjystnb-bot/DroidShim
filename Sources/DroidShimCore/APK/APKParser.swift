@@ -46,12 +46,28 @@ public struct APKMetadata {
     }
 }
 
+/// Controls how much data is eagerly extracted while importing an APK.
+public struct APKParseOptions: Sendable {
+    public var extractResourceFiles: Bool
+    public var extractNativeLibraries: Bool
+
+    public init(extractResourceFiles: Bool = true, extractNativeLibraries: Bool = true) {
+        self.extractResourceFiles = extractResourceFiles
+        self.extractNativeLibraries = extractNativeLibraries
+    }
+
+    public static let minimalInstall = APKParseOptions(
+        extractResourceFiles: false,
+        extractNativeLibraries: false
+    )
+}
+
 /// Parses APK archives.
 public final class APKParser {
     public init() {}
 
     /// Parse an APK at the given URL and extract all required files.
-    public func parse(url: URL) throws -> APKMetadata {
+    public func parse(url: URL, options: APKParseOptions = APKParseOptions()) throws -> APKMetadata {
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw APKParserError.notFound(url)
         }
@@ -82,18 +98,22 @@ public final class APKParser {
 
         // Resource files used by layout inflation, drawables, and launcher UI.
         var resourceFiles: [String: Data] = [:]
-        for entry in archive.entries where shouldExtractResource(entry.name) {
-            if let data = archive.extract(entry: entry) {
-                resourceFiles[entry.name] = data
+        if options.extractResourceFiles {
+            for entry in archive.entries where shouldExtractResource(entry.name) {
+                if let data = archive.extract(entry: entry) {
+                    resourceFiles[entry.name] = data
+                }
             }
         }
 
         // Native libraries (arm64 only in Phase 1).
         var nativeLibs: [String: Data] = [:]
-        let libPrefix = "lib/arm64-v8a/"
-        for entry in archive.entries where entry.name.hasPrefix(libPrefix) && entry.name.hasSuffix(".so") {
-            if let libData = archive.extract(entry: entry) {
-                nativeLibs[entry.name] = libData
+        if options.extractNativeLibraries {
+            let libPrefix = "lib/arm64-v8a/"
+            for entry in archive.entries where entry.name.hasPrefix(libPrefix) && entry.name.hasSuffix(".so") {
+                if let libData = archive.extract(entry: entry) {
+                    nativeLibs[entry.name] = libData
+                }
             }
         }
 
@@ -224,7 +244,9 @@ final class ZipArchive {
         // Find End of Central Directory record.
         guard data.count > 22 else { throw APKParserError.invalidZip }
         var eocdOffset: Int?
-        for i in (0...(data.count - 22)).reversed() {
+        let maxCommentLength = 65_535
+        let earliestEOCDOffset = max(0, data.count - 22 - maxCommentLength)
+        for i in (earliestEOCDOffset...(data.count - 22)).reversed() {
             if data[i] == 0x50 && data[i+1] == 0x4B && data[i+2] == 0x05 && data[i+3] == 0x06 {
                 eocdOffset = i
                 break

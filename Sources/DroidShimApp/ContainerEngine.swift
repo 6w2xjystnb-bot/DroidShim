@@ -169,7 +169,7 @@ public final class ContainerEngine: ObservableObject {
 
     nonisolated private static func installInBackground(apkURL: URL, documentsURL: URL) throws -> BackgroundInstallResult {
         let parser = APKParser()
-        let metadata = try parser.parse(url: apkURL)
+        let metadata = try parser.parse(url: apkURL, options: .minimalInstall)
         let containerURL = documentsURL.appendingPathComponent("Containers/\(metadata.package)")
         let fm = FileManager.default
 
