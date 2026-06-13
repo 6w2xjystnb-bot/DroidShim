@@ -60,7 +60,7 @@ struct ImportSheet: View {
             status = "Installing \(url.lastPathComponent)..."
             Task {
                 do {
-                    _ = try await engine.install(apkURL: url)
+                    _ = try await engine.installImportedAPK(from: url)
                     await MainActor.run {
                         status = "Installed successfully"
                         isPresented = false

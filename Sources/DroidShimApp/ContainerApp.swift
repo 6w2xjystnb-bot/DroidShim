@@ -22,11 +22,21 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct DroidShimApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @StateObject private var engine = ContainerEngine()
 
     var body: some Scene {
         WindowGroup {
             ContainerGridView()
-                .environmentObject(ContainerEngine())
+                .environmentObject(engine)
+                .onOpenURL { url in
+                    Task {
+                        do {
+                            _ = try await engine.installImportedAPK(from: url)
+                        } catch {
+                            print("Open APK error: \(error)")
+                        }
+                    }
+                }
         }
     }
 }

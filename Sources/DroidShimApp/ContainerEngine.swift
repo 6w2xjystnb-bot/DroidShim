@@ -16,6 +16,7 @@ public enum ContainerEngineError: Error, CustomStringConvertible {
     case conversionFailed(String)
     case codesignFailed(Int32)
     case launchFailed(String)
+    case importFailed(String)
 
     public var description: String {
         switch self {
@@ -23,6 +24,7 @@ public enum ContainerEngineError: Error, CustomStringConvertible {
         case .conversionFailed(let msg): return "Conversion failed: \(msg)"
         case .codesignFailed(let code): return "codesign exited \(code)"
         case .launchFailed(let msg): return "Launch failed: \(msg)"
+        case .importFailed(let msg): return "Import failed: \(msg)"
         }
     }
 }
@@ -61,6 +63,18 @@ public final class ContainerEngine: ObservableObject {
 
     // MARK: - Install
 
+    public func installImportedAPK(from url: URL) async throws -> ContainerModel {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let stagedURL = try stageAPKForImport(url)
+        return try await install(apkURL: stagedURL)
+    }
+
     public func install(apkURL: URL) async throws -> ContainerModel {
         let metadata = try parser.parse(url: apkURL)
 
@@ -96,9 +110,32 @@ public final class ContainerEngine: ObservableObject {
             icon: icon
         )
 
+        containers.removeAll { $0.package == container.package }
         containers.append(container)
         saveRegistry()
         return container
+    }
+
+    private func stageAPKForImport(_ sourceURL: URL) throws -> URL {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: sourceURL.path) else {
+            throw ContainerEngineError.importFailed("File is not accessible: \(sourceURL.lastPathComponent)")
+        }
+
+        let importsURL = fm.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("ImportedAPKs", isDirectory: true)
+        try fm.createDirectory(at: importsURL, withIntermediateDirectories: true)
+
+        let baseName = sourceURL.deletingPathExtension().lastPathComponent
+            .filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        let fileName = (baseName.isEmpty ? UUID().uuidString : baseName) + ".apk"
+        let stagedURL = importsURL.appendingPathComponent(fileName)
+
+        if fm.fileExists(atPath: stagedURL.path) {
+            try fm.removeItem(at: stagedURL)
+        }
+        try fm.copyItem(at: sourceURL, to: stagedURL)
+        return stagedURL
     }
 
     private func codesign(url: URL) throws {
