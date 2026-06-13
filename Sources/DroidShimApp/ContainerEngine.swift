@@ -9,7 +9,6 @@
 import SwiftUI
 import UIKit
 import DroidShimCore
-import DroidShimNative
 
 /// Errors raised by the container engine.
 public enum ContainerEngineError: Error, CustomStringConvertible {

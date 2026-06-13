@@ -69,33 +69,23 @@ jobs:
 
       - name: Build iOS App
         run: |
-          SCHEMES="$(xcodebuild -list)"
-          if echo "$SCHEMES" | grep -q '^[[:space:]]*DroidShimApp$'; then
-            APP_SCHEME="DroidShimApp"
-          else
-            APP_SCHEME="DroidShim-Package"
-          fi
-          DESTINATIONS="$(xcodebuild -showdestinations -scheme "$APP_SCHEME")"
-          AVAILABLE_DESTINATIONS="$(printf '%s\n' "$DESTINATIONS" | awk '/Ineligible destinations/{exit} {print}')"
-          if ! printf '%s\n' "$AVAILABLE_DESTINATIONS" | grep -q '{ platform:iOS,'; then
-            echo "$APP_SCHEME has no installable iOS app destination in this SwiftPM package; skipping app build."
-            exit 0
-          fi
-          xcodebuild -scheme "$APP_SCHEME" \
+          xcodebuild -project DroidShim.xcodeproj \
+            -scheme DroidShimApp \
+            -configuration Debug \
             -destination 'generic/platform=iOS' \
-            -derivedDataPath ./build \
+            -derivedDataPath ./build-app \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
       - name: Package IPA (unsigned)
         run: |
-          if [ ! -d build/Build/Products/Debug-iphoneos/DroidShimApp.app ]; then
+          if [ ! -d build-app/Build/Products/Debug-iphoneos/DroidShimApp.app ]; then
             echo "DroidShimApp.app was not produced; skipping IPA packaging."
             exit 0
           fi
           mkdir -p Payload
-          cp -R build/Build/Products/Debug-iphoneos/DroidShimApp.app Payload/
+          cp -R build-app/Build/Products/Debug-iphoneos/DroidShimApp.app Payload/
           zip -r DroidShim.ipa Payload
           rm -rf Payload
 
@@ -107,6 +97,7 @@ jobs:
           path: |
             build/Build/Products/**/*.framework
             build/Build/Products/**/*.dylib
+            build-app/Build/Products/**/*.app
             DroidShim.ipa
 
       - name: Tag Release

@@ -10,12 +10,11 @@ import SwiftUI
 #if canImport(UIKit)
 import UIKit
 import DroidShimCore
-import DroidShimNative
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        droidshim_initialize_shim()
+        DroidShimBootstrap.initialize()
         return true
     }
 }
