@@ -75,17 +75,11 @@ public final class ContainerEngine: ObservableObject {
             let outName = baseName.replacingOccurrences(of: ".so", with: ".dylib")
             let outURL = frameworksURL.appendingPathComponent(outName)
 
-            let bridge = DSBinaryBridge()
-            let count = bridge.parseELF(data)
-            guard count >= 0 else { throw ContainerEngineError.conversionFailed("ELF parse failed for \(name)") }
-
-            var error: NSString?
-            let ok = bridge.writeMachO(toPath: outURL.path,
-                                        installName: metadata.package + "." + outName,
-                                        error: &error)
-            guard ok else {
-                throw ContainerEngineError.conversionFailed(error as String? ?? "unknown")
-            }
+            try DroidShimNativeConverter.convertELFToMachO(
+                data: data,
+                outputPath: outURL.path,
+                installName: metadata.package + "." + outName
+            )
 
             try codesign(url: outURL)
         }
