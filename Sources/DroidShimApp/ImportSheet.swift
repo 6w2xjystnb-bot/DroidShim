@@ -7,6 +7,7 @@
 
 #if canImport(UIKit)
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 import DroidShimCore
 
@@ -50,12 +51,11 @@ struct ImportSheet: View {
                     Button("Close") { isPresented = false }
                 }
             }
-            .fileImporter(
-                isPresented: $isImporting,
-                allowedContentTypes: [.item, .data, .androidPackage],
-                allowsMultipleSelection: false
-            ) { result in
-                handleImport(result: result)
+            .sheet(isPresented: $isImporting) {
+                APKDocumentPicker { result in
+                    isImporting = false
+                    handleImport(result: result)
+                }
             }
             .alert("Import Error", isPresented: $showError) {
                 Button("OK") {}
@@ -65,10 +65,9 @@ struct ImportSheet: View {
         }
     }
 
-    private func handleImport(result: Result<[URL], Error>) {
+    private func handleImport(result: Result<URL, Error>) {
         switch result {
-        case .success(let urls):
-            guard let url = urls.first else { return }
+        case .success(let url):
             status = launchAfterImport ? "Opening \(url.lastPathComponent)..." : "Installing \(url.lastPathComponent)..."
             Task {
                 do {
@@ -88,6 +87,47 @@ struct ImportSheet: View {
         case .failure(let error):
             errorMessage = String(describing: error)
             showError = true
+        }
+    }
+}
+
+struct APKDocumentPicker: UIViewControllerRepresentable {
+    let onComplete: (Result<URL, Error>) -> Void
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(
+            forOpeningContentTypes: [.item, .data, .androidPackage],
+            asCopy: true
+        )
+        picker.delegate = context.coordinator
+        picker.allowsMultipleSelection = false
+        picker.shouldShowFileExtensions = true
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onComplete: onComplete)
+    }
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onComplete: (Result<URL, Error>) -> Void
+
+        init(onComplete: @escaping (Result<URL, Error>) -> Void) {
+            self.onComplete = onComplete
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            guard let url = urls.first else {
+                onComplete(.failure(ContainerEngineError.importFailed("No file selected")))
+                return
+            }
+            onComplete(.success(url))
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            onComplete(.failure(ContainerEngineError.importFailed("File selection cancelled")))
         }
     }
 }
