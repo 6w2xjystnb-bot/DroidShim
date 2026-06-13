@@ -71,23 +71,33 @@ jobs:
         run: |
           xcodebuild -project DroidShim.xcodeproj \
             -scheme DroidShimApp \
-            -configuration Debug \
+            -configuration Release \
             -destination 'generic/platform=iOS' \
             -derivedDataPath ./build-app \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            ENABLE_DEBUG_DYLIB=NO
 
-      - name: Package IPA (unsigned)
+      - name: Package Sideload IPA (unsigned)
         run: |
-          if [ ! -d build-app/Build/Products/Debug-iphoneos/DroidShimApp.app ]; then
+          if [ ! -d build-app/Build/Products/Release-iphoneos/DroidShimApp.app ]; then
             echo "DroidShimApp.app was not produced; skipping IPA packaging."
             exit 0
           fi
           mkdir -p Payload
-          cp -R build-app/Build/Products/Debug-iphoneos/DroidShimApp.app Payload/
-          zip -r DroidShim.ipa Payload
+          cp -R build-app/Build/Products/Release-iphoneos/DroidShimApp.app Payload/
+          zip -qry DroidShim-sideload-unsigned.ipa Payload
           rm -rf Payload
+
+      - name: Verify IPA Structure
+        run: |
+          test -f DroidShim-sideload-unsigned.ipa
+          unzip -q DroidShim-sideload-unsigned.ipa -d ipa-check
+          test -d ipa-check/Payload/DroidShimApp.app
+          test -f ipa-check/Payload/DroidShimApp.app/DroidShimApp
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' ipa-check/Payload/DroidShimApp.app/Info.plist
+          find ipa-check/Payload/DroidShimApp.app -maxdepth 2 -type f | sort
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -98,7 +108,7 @@ jobs:
             build/Build/Products/**/*.framework
             build/Build/Products/**/*.dylib
             build-app/Build/Products/**/*.app
-            DroidShim.ipa
+            DroidShim-sideload-unsigned.ipa
 
       - name: Tag Release
         if: github.ref == 'refs/heads/main'
