@@ -29,10 +29,27 @@ public enum ContainerEngineError: Error, CustomStringConvertible {
     }
 }
 
+public enum ContainerEngineActivity: Equatable {
+    case idle
+    case importing(String)
+    case launching(String)
+    case failed(String)
+
+    public var message: String? {
+        switch self {
+        case .idle: return nil
+        case .importing(let name): return "Importing \(name)..."
+        case .launching(let name): return "Launching \(name)..."
+        case .failed(let message): return message
+        }
+    }
+}
+
 /// Central engine managing all containers.
 @MainActor
 public final class ContainerEngine: ObservableObject {
     @Published public var containers: [ContainerModel] = []
+    @Published public var activity: ContainerEngineActivity = .idle
 
     private let parser = APKParser()
     private let registryKey = "droidshim.containers"
@@ -63,6 +80,25 @@ public final class ContainerEngine: ObservableObject {
 
     // MARK: - Install
 
+    @discardableResult
+    public func openAPK(from url: URL, launchAfterInstall: Bool) async throws -> ContainerModel {
+        activity = .importing(url.lastPathComponent)
+        do {
+            let container = try await installImportedAPK(from: url)
+            if launchAfterInstall {
+                activity = .launching(container.name)
+                launch(container)
+            } else {
+                activity = .idle
+            }
+            return container
+        } catch {
+            let message = describe(error)
+            activity = .failed(message)
+            throw error
+        }
+    }
+
     public func installImportedAPK(from url: URL) async throws -> ContainerModel {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer {
@@ -80,7 +116,11 @@ public final class ContainerEngine: ObservableObject {
 
         let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let containerURL = base.appendingPathComponent("Containers/\(metadata.package)")
+        if FileManager.default.fileExists(atPath: containerURL.path) {
+            try FileManager.default.removeItem(at: containerURL)
+        }
         try parser.extractToContainer(metadata: metadata, containerURL: containerURL)
+        appendLog("Installed \(metadata.package) from \(apkURL.lastPathComponent)", to: containerURL)
 
         // Convert each arm64 .so to Mach-O and codesign.
         let frameworksURL = containerURL.appendingPathComponent("Frameworks")
@@ -161,6 +201,8 @@ public final class ContainerEngine: ObservableObject {
     public func launch(_ container: ContainerModel) {
         Task { @MainActor in
             do {
+                activity = .launching(container.name)
+                appendLog("Launching \(container.package)", to: container.vmPath)
                 let dexData = try Data(contentsOf: container.vmPath.appendingPathComponent("classes.dex"))
                 let dex = try DexFile(data: dexData)
                 let interpreter = ARTInterpreter(dex: dex)
@@ -214,9 +256,13 @@ public final class ContainerEngine: ObservableObject {
                 }
                 activity.onCreate(savedInstanceState: nil)
                 activity.onResume()
+                self.activity = .idle
             } catch {
                 container.state = .error
-                print("Launch error: \(error)")
+                let message = "Launch error: \(describe(error))"
+                appendLog(message, to: container.vmPath)
+                activity = .failed(message)
+                print(message)
             }
         }
     }
@@ -242,6 +288,32 @@ public final class ContainerEngine: ObservableObject {
     public func exportLogs(_ container: ContainerModel) -> URL {
         let logURL = container.vmPath.appendingPathComponent("droidshim.log")
         return logURL
+    }
+
+    public func clearActivity() {
+        activity = .idle
+    }
+
+    private func describe(_ error: Error) -> String {
+        if let custom = error as? CustomStringConvertible {
+            return custom.description
+        }
+        return error.localizedDescription
+    }
+
+    private func appendLog(_ message: String, to containerURL: URL) {
+        let logURL = containerURL.appendingPathComponent("droidshim.log")
+        let line = "[\(ISO8601DateFormatter().string(from: Date()))] \(message)\n"
+        if let data = line.data(using: .utf8) {
+            if FileManager.default.fileExists(atPath: logURL.path),
+               let handle = try? FileHandle(forWritingTo: logURL) {
+                try? handle.seekToEnd()
+                try? handle.write(contentsOf: data)
+                try? handle.close()
+            } else {
+                try? data.write(to: logURL)
+            }
+        }
     }
 }
 #endif

@@ -14,6 +14,7 @@ struct ImportSheet: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var engine: ContainerEngine
     @State private var isImporting = false
+    @State private var launchAfterImport = false
     @State private var status = "Select an APK file"
     @State private var showError = false
     @State private var errorMessage = ""
@@ -25,6 +26,13 @@ struct ImportSheet: View {
                     .foregroundColor(.secondary)
 
                 Button("Import APK") {
+                    launchAfterImport = false
+                    isImporting = true
+                }
+                .buttonStyle(.bordered)
+
+                Button("Import & Run") {
+                    launchAfterImport = true
                     isImporting = true
                 }
                 .buttonStyle(.borderedProminent)
@@ -57,12 +65,12 @@ struct ImportSheet: View {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
-            status = "Installing \(url.lastPathComponent)..."
+            status = launchAfterImport ? "Opening \(url.lastPathComponent)..." : "Installing \(url.lastPathComponent)..."
             Task {
                 do {
-                    _ = try await engine.installImportedAPK(from: url)
+                    _ = try await engine.openAPK(from: url, launchAfterInstall: launchAfterImport)
                     await MainActor.run {
-                        status = "Installed successfully"
+                        status = launchAfterImport ? "Opening..." : "Installed successfully"
                         isPresented = false
                     }
                 } catch {

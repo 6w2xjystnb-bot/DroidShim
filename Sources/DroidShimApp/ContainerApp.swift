@@ -31,7 +31,7 @@ struct DroidShimApp: App {
                 .onOpenURL { url in
                     Task {
                         do {
-                            _ = try await engine.installImportedAPK(from: url)
+                            _ = try await engine.openAPK(from: url, launchAfterInstall: true)
                         } catch {
                             print("Open APK error: \(error)")
                         }
